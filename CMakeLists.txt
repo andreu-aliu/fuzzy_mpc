@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(ltv_mpc LANGUAGES C CXX)
+project(fuzzy_mpc LANGUAGES C CXX)
 
 # ------------------------------------------------------------------------------
 # Compiler setup

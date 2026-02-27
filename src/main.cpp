@@ -44,7 +44,7 @@ class Manager : public rclcpp::Node{
     bool init_state = true; // at the begining we use different initialization weights
   
   public:
-    Manager(): Node("ltv_mpc", 
+    Manager(): Node("fuzzy_mpc", 
         rclcpp::NodeOptions()
         .allow_undeclared_parameters(true)
         .automatically_declare_parameters_from_overrides(true)){
