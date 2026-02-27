@@ -2,11 +2,10 @@ cd /home/andreu/bcnemotorsport/adaptive_mpc/fuzzy-mpc/mtlb; addpath(genpath('/ho
 clear all
 %% Setup
 
-data_path = "/home/andreu/bcnemotorsport/data/simu/rosbag2_2026_02_23-20_19_45";
-
+data_path = "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG";
 
 %% Load data 
-data = read_ros2bag(data_path)
+data = read_ros2bag(data_path);
 
 %% Plot data
 t = data.time;
@@ -32,7 +31,7 @@ title('Vehicle Map')
 ax = gobjects(5,1);
 
 ax(1) = nexttile(tl);
-plot(t, data.steering, 'LineWidth', 1)
+plot(t, data.st, 'LineWidth', 1)
 ylabel('\delta [rad]')
 title('Steering')
 grid on
@@ -44,7 +43,7 @@ title('Longitudinal Velocity')
 grid on
 
 ax(3) = nexttile(tl);
-plot(t, data.vy, 'LineWidth', 1)
+plot(t, data.vy,'LineWidth', 1)
 ylabel('v_y [m/s]')
 title('Lateral Velocity')
 grid on
@@ -67,3 +66,60 @@ legend('FL','FR','RL','RR')
 grid on
 
 linkaxes(ax,'x')
+
+
+%% Plot Delta_r Delta_vy and filtered
+delta_r  = data.r(1:end-1) - data.r(2:end);
+delta_vy = data.vy(1:end-1) - data.vy(2:end);
+
+% Filter with Savitzky-Golay
+r_filtered = sgolayfilt_custom(data.r, 3, 21);
+vy_filtered = sgolayfilt_custom(data.vy, 3, 21);
+delta_r_filtered = r_filtered(1:end-1) - r_filtered(2:end);
+delta_vy_filtered = vy_filtered(1:end-1) - vy_filtered(2:end);
+
+% Plot
+figure()
+tl = tiledlayout(4,1,'TileSpacing','compact','Padding','compact');
+ax = gobjects(4,1);
+
+% Yaw rate
+ax(1) = nexttile(tl);
+plot(t, data.r, 'LineWidth', 1)
+hold on
+plot(t, r_filtered, 'LineWidth', 1)
+ylabel('\delta [rad]')
+title('Yaw rate')
+grid on
+
+ax(2) = nexttile(tl);
+plot(t(1:end-1), delta_r, 'LineWidth', 1)
+hold on; 
+plot(t(1:end-1), delta_r_filtered, 'LineWidth', 1)
+ylabel('v_x [m/s]')
+title('\Delta Yaw rate')
+grid on
+
+% Lateral velocity
+ax(3) = nexttile(tl);
+plot(t, data.vy, 'LineWidth', 1)
+hold on
+plot(t, vy_filtered, 'LineWidth', 1)
+ylabel('\delta [rad]')
+title('Yaw rate')
+grid on
+
+ax(4) = nexttile(tl);
+plot(t(1:end-1), delta_vy, 'LineWidth', 1)
+hold on; 
+plot(t(1:end-1), delta_vy_filtered, 'LineWidth', 1)
+ylabel('v_x [m/s]')
+title('\Delta Yaw rate')
+grid on
+
+linkaxes(ax,'x')
+
+%% Time stamps diff
+figure
+timeDiff = diff(t);
+plot(timeDiff)

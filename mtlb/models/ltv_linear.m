@@ -24,7 +24,7 @@ if vx < 2
     A = zeros(4); 
     B = zeros(4,1);
 else
-    A = [0, cos(psi), vx*cos(psi), 0;
+    A = [0, 1, vx, 0; % cos(psi), vx*cos(psi), 0;
          0, -(Cf*cos(delta)+Cr)/(m*vx), 0, -((lf*Cf*cos(delta)-lr*Cr)/(m*vx))+vx;
          0, 0, 0, 1;
          0, -(lf*Cf*cos(delta)-lr*Cr)/(Iz*vx), 0, -(lf*lf*Cf*cos(delta)+lr*lr*Cr)/(Iz*vx)];

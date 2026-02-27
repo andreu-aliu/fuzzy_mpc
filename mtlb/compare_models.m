@@ -1,11 +1,11 @@
 cd /home/andreu/bcnemotorsport/adaptive_mpc/fuzzy-mpc/mtlb; addpath(genpath('/home/andreu/bcnemotorsport/adaptive_mpc/fuzzy-mpc/mtlb'))
 clear all
 %% Setup
-dataFile = "/home/andreu/bcnemotorsport/data/simu/rosbag2_2026_02_23-20_19_45";
+dataFile = "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG";
 
 % Simulation window
 idx_start = 800;
-horizon  = 100;
+horizon  = 500;
 
 %% LOAD DATA
 data = read_ros2bag(dataFile);
@@ -16,7 +16,7 @@ idx_end = min(idx_start + horizon - 1, height(data.vx));
 meas.t = data.time(idx_start:idx_end);
 in.t = data.time(idx_start:idx_end);
 
-in.st = data.steering(idx_start:idx_end);
+in.st = data.st(idx_start:idx_end);
 in.mz = data.mz(idx_start:idx_end);
 in.vx = data.vx(idx_start:idx_end);
 
@@ -75,7 +75,7 @@ grid on
 
 % Steering
 ax4 = nexttile(rightLayout); hold on;
-plot(data.time, data.steering, 'w');
+plot(data.time, data.st, 'w');
 plot(meas.t, in.st, 'b','LineWidth',1.2);
 ylabel('\delta [rad]');
 title('Steering');
@@ -97,7 +97,7 @@ grid on
 
 % List of models to compare
 models = {
-    %@anfis_direct, 'ANFIS direct';
+    @direct_anfis, 'ANFIS direct';
     @ltv_linear, 'LTV MPC';
     @ltv_linear_tv, 'LTV MPC with TV';
 };

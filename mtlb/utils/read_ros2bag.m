@@ -7,10 +7,7 @@ function data = read_ros2bag(bagPath)
 % Open bag
 bag = ros2bagreader(bagPath);
 
-% ==========================
 % STATE TOPIC (REFERENCE)
-% ==========================
-
 stateSel  = select(bag,"Topic","/as/c/state");
 stateMsgs = readMessages(stateSel);
 t_state = stateSel.MessageList.Time;
@@ -33,10 +30,7 @@ for i = 1:Ns
     r(i)  = msg.odom.velocity.w;
 end
 
-% ==========================
 % STEERING
-% ==========================
-
 steerSel  = select(bag,"Topic","/as/c/steering");
 steerMsgs = readMessages(steerSel);
 t_steer = steerSel.MessageList.Time;
@@ -51,10 +45,7 @@ for i = 1:Nst
     steering(i) = msg.steering;
 end
 
-% ==========================
 % TORQUE VECTORING
-% ==========================
-
 tvSel  = select(bag,"Topic","/ctrl/llc/torque_vectoring");
 tvMsgs = readMessages(tvSel);
 t_tv = tvSel.MessageList.Time;
@@ -77,10 +68,7 @@ for i = 1:Nt
     Trr(i) = msg.rear_right_torque;
 end
 
-% ==========================
 % REMOVE DUPLICATES
-% ==========================
-
 t0 = t_state(1);
 
 t_state = t_state - t0;
@@ -98,36 +86,43 @@ Tfr_unique = Tfr(idx_tv);
 Trl_unique = Trl(idx_tv);
 Trr_unique = Trr(idx_tv);
 
-% ==========================
-% ZERO-ORDER HOLD (PREVIOUS SAMPLE)
-% ==========================
+% RESAMPLING
+Ts = 0.01;  
+t_start = max([t_state(1), t_steer_unique(1), t_tv_unique(1)]);
+t_end   = min([t_state(end), t_steer_unique(end), t_tv_unique(end)]);
 
-steering_sync = interp1(t_steer_unique, steering_unique, ...
-                        t_state, 'previous', 'extrap');
+t_uniform = (t_start:Ts:t_end)';
 
-mz_sync  = interp1(t_tv_unique, mz_unique,  t_state, 'previous', 'extrap');
-Tfl_sync = interp1(t_tv_unique, Tfl_unique, t_state, 'previous', 'extrap');
-Tfr_sync = interp1(t_tv_unique, Tfr_unique, t_state, 'previous', 'extrap');
-Trl_sync = interp1(t_tv_unique, Trl_unique, t_state, 'previous', 'extrap');
-Trr_sync = interp1(t_tv_unique, Trr_unique, t_state, 'previous', 'extrap');
+x_100  = interp1(t_state, x,  t_uniform, 'linear');
+y_100  = interp1(t_state, y,  t_uniform, 'linear');
+vx_100 = interp1(t_state, vx, t_uniform, 'linear');
+vy_100 = interp1(t_state, vy, t_uniform, 'linear');
+r_100  = interp1(t_state, r,  t_uniform, 'linear');
 
-% ==========================
+steering_100 = interp1(t_steer_unique, steering_unique, ...
+                       t_uniform, 'linear');
+
+mz_100  = interp1(t_tv_unique, mz_unique,  t_uniform, 'linear');
+Tfl_100 = interp1(t_tv_unique, Tfl_unique, t_uniform, 'linear');
+Tfr_100 = interp1(t_tv_unique, Tfr_unique, t_uniform, 'linear');
+Trl_100 = interp1(t_tv_unique, Trl_unique, t_uniform, 'linear');
+Trr_100 = interp1(t_tv_unique, Trr_unique, t_uniform, 'linear');
+
+
 % CREATE TIMESERIES
-% ==========================
+data.time = t_uniform;
 
-data.time = t_state;
+data.x  = x_100;
+data.y  = y_100;
+data.vx = vx_100;
+data.vy = vy_100;
+data.r  = r_100;
 
-data.x  = x;
-data.y  = y;
-data.vx = vx;
-data.vy = vy;
-data.r  = r;
+data.st = steering_100;
 
-data.steering = steering_sync;
-
-data.mz  = mz_sync;
-data.Tfl = Tfl_sync;
-data.Tfr = Tfr_sync;
-data.Trl = Trl_sync;
-data.Trr = Trr_sync;
+data.mz  = mz_100;
+data.Tfl = Tfl_100;
+data.Tfr = Tfr_100;
+data.Trl = Trl_100;
+data.Trr = Trr_100;
 end
