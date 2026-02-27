@@ -1,0 +1,64 @@
+as/c:  
+  ltv_mpc:
+    ros__parameters:
+      profile: true
+
+      Car:
+        m: 215.0      # Car's mass
+        I: 188.0      # Inertial moment (180) (128)
+        Lf: 0.765     # Distance from CoG to front axis (0.708) 
+        Lr: 0.765     # Distance from CoG to rear axis (0.822) 
+        Bf: 10.5507   # 10.8529
+        Br: 10.5507   # 10.1507
+        Cf: -1.2705   #-1.1705 
+        Cr: -1.2705   #-1.1705 
+        Df: 1104.0    # 2208.0635*0.5
+        Dr: 1281.5    # 2563.599*0.5
+
+      MPC:
+        n_horizon: 60
+        n_planning: 2000
+        n_states: 6
+        n_controls: 1
+        Ts: 0.025
+        Disc: 0.025
+        latency: 1.0
+        
+        verbose: false
+
+        save_debug: false
+
+        q_lat: 2.0
+        q_vy: 0.0
+        q_phi: 0.1
+        q_r: 0.0
+        q_delta: 0.0
+        r_delta: 0.5
+        p_lat: 10.0
+        p_vy: 0.0
+        p_phi: 10.0
+        p_r: 0.0
+        p_delta: 0.0
+        q_lat_init: 2.0
+        q_phi_init: 4.0
+        q_delta_init: 50.0
+        r_delta_init: 80.0
+
+        vx_to_finish_init: 2.0
+
+      Topics:
+        InState: /as/c/state
+        InPlanner: /as/c/locator
+        InVelocities: /as/c/log_pid/velocity
+        OutSteering: /as/c/steering
+        OutDuration: /as/c/mpc/debug/time
+        Vis:
+          PredictedSteering:  /vis/predictedPath/steering
+          PredictedPath:      /vis/predictedPath/path
+          PredictedHeading:   /vis/predictedPath/heading
+          ActualPath:         /vis/actualPlanner/path
+        Debug:
+          OutLateralError: /as/c/mpc/debug/lateralError
+          OutHeadingError: /as/c/mpc/debug/headingError
+          OutYawRateRef: /as/c/yawRateRef
+        

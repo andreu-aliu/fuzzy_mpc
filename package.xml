@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>fuzzy_mpc</name>
+  <version>0.0.0</version>
+  <description>The fuzzy_mpc package (ROS 2 Jazzy)</description>
+
+  <maintainer email="gualisi@gmail.com">Andreu Aliu</maintainer>
+  <license>TODO</license>
+
+  <!-- Build system -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Dependencies -->
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>cat_msgs</depend>
+  <depend>visualization_msgs</depend>
+
+  <!-- Optional dependencies -->
+  <depend>dynamic_reconfigure</depend> <!-- if you have a ROS 2 alternative -->
+
+  <!-- Test dependencies (optional but good practice) -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

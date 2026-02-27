@@ -1,0 +1,12 @@
+[submodule "external/external/blasfeo"]
+	path = external/external/blasfeo
+	url = https://github.com/giaf/blasfeo
+[submodule "external/external/hpipm"]
+	path = external/external/hpipm
+	url = https://github.com/giaf/hpipm
+[submodule "external/hpipm"]
+	path = external/hpipm
+	url = https://github.com/giaf/hpipm
+[submodule "external/blasfeo"]
+	path = external/blasfeo
+	url = https://github.com/giaf/blasfeo
