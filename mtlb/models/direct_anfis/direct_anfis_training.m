@@ -166,7 +166,14 @@ save('models/direct_anfis/direct_anfis.mat','direct_anfis')
 % - SC: Clusters:0.35, epoch:200, init:0.13, dec:0.9, inc:1.1 -> 0.00655891, 6 rules, 57% RMSE inicial
 
 
-%% 
+%% Extract and save matrixes
+
+load direct_anfis.mat direct_anfis
+
+direct_anfis.vy.mat = extract_fis(direct_anfis.vy.fis);
+direct_anfis.r.mat = extract_fis(direct_anfis.r.fis);
+
+save('models/direct_anfis/direct_anfis.mat','direct_anfis')
 
 %% Model insights
 

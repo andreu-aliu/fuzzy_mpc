@@ -15,44 +15,29 @@ if(isempty(direct_anfis))
     direct_anfis = S.direct_anfis;
 end
 
-% Build ANFIS input vector and normalize
-Xin = [vy r vx st mz];
-Xin_n = (Xin - direct_anfis.norm.mu) ./ direct_anfis.norm.sigma;
+% % Build ANFIS input vector and normalize
+% Xin = [vy r vx st mz];
+% Xin_n = (Xin - direct_anfis.norm.mu) ./ direct_anfis.norm.sigma;
+% 
+% % Evaluate learned dynamics
+% [~, ~,dvy] = evalfis_mat(direct_anfis.vy.mat, Xin_n);
+% [~, ~,dr]  = evalfis_mat(direct_anfis.r.mat,  Xin_n);
+% 
+% % Convert to derivatives
+% vy_dot = dvy / dt;
+% r_dot  = dr  / dt;
+% 
+% % Kinematics
+% y_dot   = vx*sin(psi) + vy*cos(psi);%cos(psi) * vy + vx*cos(psi) * psi;
+% psi_dot = r;
+% 
+% % Next state
+% Xdot = [y_dot; vy_dot; psi_dot; r_dot];
+% x_next = X + Xdot*dt;
 
-% Evaluate learned dynamics
-dvy = evalfis(direct_anfis.vy.fis, Xin_n);
-dr  = evalfis(direct_anfis.r.fis,  Xin_n);
+U_pred = [st mz];
+[A, B, C] = direct_anfis_matrix(X, U_pred, vx);
 
-% Convert to derivatives
-vy_dot = dvy / dt;
-r_dot  = dr  / dt;
-
-% Kinematics
-y_dot   = cos(psi) * vy + vx*cos(psi) * psi;
-psi_dot = 
-
-% Model matrix (y, vy, psi, r)
-if vx < 2
-    A = zeros(4); 
-    B = zeros(4,1);
-else
-    A = [0, cos(psi), vx*cos(psi), 0;
-         0, -(Cf*cos(delta)+Cr)/(m*vx), 0, -((lf*Cf*cos(delta)-lr*Cr)/(m*vx))+vx;
-         0, 0, 0, 1;
-         0, -(lf*Cf*cos(delta)-lr*Cr)/(Iz*vx), 0, -(lf*lf*Cf*cos(delta)+lr*lr*Cr)/(Iz*vx)];
-    B = [0;
-         Cf*cos(delta)/m;
-         0;
-         lf*Cf*cos(delta)/Iz];
-end
-
-% Discretize matrix
-M = [A B; zeros(1,5)];
-exp_matrix = expm(M*dt);
-C = exp_matrix(1:4,1:4);
-D = exp_matrix(1:4,5);
-
-% Next state
-x_next = C*X + D*delta;
+x_next = X + A * X + B * U + C; 
 
 end

@@ -169,9 +169,6 @@ class Manager : public rclcpp::Node{
             if(cfg.mpc.verbose)
                 RCLCPP_WARN(get_logger(), "MPC: No planner received yet");
         }
-
-        // Print or publish computational times
-        // PROFC_PRINT()
     }
 
     void plannerCallback(const cat_msgs::msg::ObjectiveArrayCurv::SharedPtr& msg){

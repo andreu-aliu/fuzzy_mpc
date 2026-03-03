@@ -1,4 +1,4 @@
-cd /home/andreu/bcnemotorsport/adaptive_mpc/fuzzy-mpc/mtlb; addpath(genpath('/home/andreu/bcnemotorsport/adaptive_mpc/fuzzy-mpc/mtlb'))
+cd /home/andreu/ros_ws/src/as/control/fuzzy-mpc/mtlb; addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy-mpc/mtlb'))
 clear all
 %% Setup
 
