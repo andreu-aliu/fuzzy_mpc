@@ -1,4 +1,4 @@
-function x_next = ltv_linear(X, U, dt)
+function x_next = ltv(X, U, dt)
 % X: [y vy psi r]
 % U: [vx delta Mtv]
     

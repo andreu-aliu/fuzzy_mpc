@@ -1,5 +1,5 @@
 % The funciton returns the discrete state matrices for a given state (predicted + vx)
-% Δx = A x + B u + C
+% x = A x + B u + C
 % x: [y vy psi r]
 % u: [st mz]
 function [A, B, C] = direct_anfis_matrix(X_pred, U_pred, vx)
@@ -56,6 +56,8 @@ A(4,4) = A_r(2);
 B(4,1) = A_r(4);
 B(4,2) = A_r(5);
 C(4)   = b_r + A_r(3) * vx;
+
+A = eye(4) + A;
 
 end
 

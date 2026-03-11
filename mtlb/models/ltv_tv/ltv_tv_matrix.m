@@ -1,12 +1,10 @@
-function x_next = ltv_linear_tv(X, U, dt)
-% X: [y vy psi r]
-% U: [vx delta Mtv]
-    
-% Unpack state and inputs
-C = num2cell(X);
-[y vy psi r] = deal(C{:});
-C = num2cell(U);
-[vx delta Mtv] = deal(C{:});
+% The funciton returns the discrete state matrices for a given state (predicted + vx)
+% x = A x + B u + C
+% x: [y vy psi r]
+% u: [st mz]
+function [Ad, Bd, Cd] = ltv_tv_matrix(X_pred, U_pred, vx)
+
+dt = 0.01;
 
 % Car parameters
 m = 220;
@@ -37,10 +35,9 @@ end
 % Discretize matrix
 M = [A B; zeros(2,4), zeros(2,2)];
 exp_matrix = expm(M*dt);
-C = exp_matrix(1:4,1:4);
-D = exp_matrix(1:4,5:6);
+Ad = exp_matrix(1:4,1:4);
+Bd = exp_matrix(1:4,5:6);
+Cd = zeros(4,1);
 
-% Next state
-x_next = C*X + D*[delta; Mtv];
-
+Ad = Ad + eye(4);
 end

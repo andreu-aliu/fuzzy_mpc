@@ -38,6 +38,6 @@ end
 U_pred = [st; mz];
 [A, B, C] = direct_anfis_matrix(X, U_pred, vx);
 
-x_next = X + A * X + B * U_pred + C; 
+x_next =  A * X + B * U_pred + C; 
 
 end

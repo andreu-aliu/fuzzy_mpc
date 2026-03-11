@@ -5,7 +5,7 @@ dataFile = "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG";
 
 % Simulation window
 idx_start = 450;
-horizon  = 500;
+horizon  = 60;
 
 %% LOAD DATA
 data = read_ros2bag(dataFile);
@@ -98,8 +98,8 @@ grid on
 % List of models to compare
 models = {
     @direct_anfis, 'ANFIS direct';
-    @ltv_linear, 'LTV MPC';
-    @ltv_linear_tv, 'LTV MPC with TV';
+    @ltv, 'LTV MPC';
+    @ltv_tv, 'LTV MPC with TV';
 };
 
 % Run each model on the selected window
