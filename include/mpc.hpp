@@ -36,7 +36,7 @@ class MPC {
     vector<Eigen::VectorXd> B, D;
     vector<Eigen::MatrixXd> C_powers;
     Eigen::MatrixXd P, R, R_, S, T, H, I;
-    Eigen::VectorXd x0, x_ref, q_diag, g;
+    Eigen::VectorXd x0, x_ref, x_prev, q_diag, g;
     Eigen::MatrixXd QS;
     Eigen::MatrixXd S_transpose;
     Eigen::MatrixXd StQS;
@@ -216,6 +216,7 @@ class MPC {
         // Initialize mpc matrices
         x0.resize(n_states_);
         x_ref.resize(n_states_ * n_horizon_);
+        x_prev.resize(n_states_ * n_horizon_);
         R.resize(n_controls_, n_controls_);
         R_.resize(n_horizon_ * n_controls_, n_horizon_ * n_controls_);
         S.resize(n_horizon_ * n_states_, n_horizon_);
@@ -531,6 +532,16 @@ class MPC {
             prev_delta[n_horizon_ - 1] = min(max(pred_states((n_horizon_ - 1) * n_states_ + 4), -25.0 * M_PI / 180.0), 25.0 * M_PI / 180.0);
         }
 
+        // Construct x_prev
+        for (size_t i = 0; i < n_horizon_; ++i){
+            x_prev(i * n_states_) = rotated_y;              // y
+            x_prev(i * n_states_ + 1) = prev_vy[i];         // vy
+            x_prev(i * n_states_ + 2) = transformed_headings[i+1];        // heading respect the reference frame
+            x_prev(i * n_states_ + 3) = prev_r[i];          // yaw rate
+            x_prev(i * n_states_ + 4) = prev_delta[i];      // Steering
+            x_prev(i * n_states_ + 5) = delta_dot_filtered; // Filtered steering dot
+        }
+
         Cf_ = Df * Cf * Bf;
         Cr_ = Dr * Cr * Br;
 
@@ -540,20 +551,15 @@ class MPC {
             vx[i] = max(2.0, vx[i]);
             // vx[i] = max(2.0, car_state(3));
 
+            Eigen::VectorXd prev_state = x_prev.segment(i * n_states_, n_states_);
+
             // Define matrix A
-            A[i] << 0, cos(transformed_headings[i+1]), vx[i]*cos(transformed_headings[i+1]), 0, 0, 0, // cos(transformed_headings[i+1]) - cos(prev_phi[i])
+            A[i] << 0, cos(prev_state[2]), vx[i]*cos(prev_state[2]), 0, 0, 0,
                     0, (Cf_ * cos(prev_delta[i]) + Cr_) / (m_ * vx[i]), 0, ((lf_ * Cf_ * cos(prev_delta[i]) - lr_ * Cr_) / (m_ * vx[i])) - vx[i], -Cf_ * cos(prev_delta[i]) / m_, 0,
                     0, 0, 0, 1, 0, 0,
                     0, (lf_ * Cf_ * cos(prev_delta[i]) - lr_ * Cr_) / (Iz_ * vx[i]), 0, (lf_ * lf_ * Cf_ * cos(prev_delta[i]) + lr_ * lr_ * Cr_) / (Iz_ * vx[i]), -lf_ * Cf_ * cos(prev_delta[i]) / Iz_, 0, 
                     0, 0, 0, 0, 0, 1,
                     0, 0, 0, 0, - omega_ * omega_, - 2.0 * damp_ * omega_;
-
-            // A[i] << 0, cos(transformed_headings[i+1]), vx[i]*cos(transformed_headings[i+1]), 0, 0, 0, // cos(transformed_headings[i+1]) - cos(prev_phi[i])
-            //         0, (Cf_ + Cr_) / (m_ * vx[i]), 0, ((lf_ * Cf_ - lr_ * Cr_) / (m_ * vx[i])) - vx[i], -Cf_ / m_, 0,
-            //         0, 0, 0, 1, 0, 0,
-            //         0, (lf_ * Cf_ - lr_ * Cr_) / (Iz_ * vx[i]), 0, (lf_ * lf_ * Cf_ + lr_ * lr_ * Cr_) / (Iz_ * vx[i]), -lf_ * Cf_ / Iz_, 0, 
-            //         0, 0, 0, 0, 0, 1,
-            //         0, 0, 0, 0, - omega_ * omega_, - 2.0 * damp_ * omega_;
 
             // Define vector b
             B[i] << 0, 0, 0, 0, 0, omega_ * omega_;
