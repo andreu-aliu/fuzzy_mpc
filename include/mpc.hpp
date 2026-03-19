@@ -17,6 +17,8 @@
 #include "utils/Config.hpp"
 #include <as_lib/utils/Profiler.hpp>
 
+#include "models/ltv_model.hpp"
+
 class Point : public std::array<double, 2> {
     public:
     static const int DIM = 2;
@@ -27,13 +29,15 @@ class MPC {
   private:
     Config& cfg;
     Solver solver;
+    LtvModel model;
 
     // KDTree for the trajectory
     kdt::KDTree<Point> planner_tree_;
 
     // Optimization matrices
     vector<Eigen::MatrixXd> A, C;
-    vector<Eigen::VectorXd> B, D;
+    vector<Eigen::MatrixXd> B, D;
+    vector<Eigen::VectorXd> W;
     vector<Eigen::MatrixXd> C_powers;
     Eigen::MatrixXd P, R, R_, S, T, H, I;
     Eigen::VectorXd x0, x_ref, x_prev, q_diag, g;
@@ -235,13 +239,15 @@ class MPC {
         B.resize(n_horizon_);
         C.resize(n_horizon_);
         D.resize(n_horizon_);
+        W.resize(n_horizon_);
         C_powers.resize(n_horizon_ + 1);
 
         for (size_t i = 0; i < n_horizon_; ++i){
             A[i].resize(n_states_, n_states_);
-            B[i].resize(n_states_);
+            B[i].resize(n_states_, 1);
             C[i].resize(n_states_, n_states_);
-            D[i].resize(n_states_);
+            D[i].resize(n_states_, 1);
+            W[i].resize(n_states_);
         }
 
         for (size_t i = 0; i <= n_horizon_; ++i){
@@ -552,28 +558,10 @@ class MPC {
             // vx[i] = max(2.0, car_state(3));
 
             Eigen::VectorXd prev_state = x_prev.segment(i * n_states_, n_states_);
+            Eigen::VectorXd prev_u = Eigen::VectorXd::Zero(n_controls_);
+            prev_u(0, 0) = prev_delta[i];
 
-            // Define matrix A
-            A[i] << 0, cos(prev_state[2]), vx[i]*cos(prev_state[2]), 0, 0, 0,
-                    0, (Cf_ * cos(prev_delta[i]) + Cr_) / (m_ * vx[i]), 0, ((lf_ * Cf_ * cos(prev_delta[i]) - lr_ * Cr_) / (m_ * vx[i])) - vx[i], -Cf_ * cos(prev_delta[i]) / m_, 0,
-                    0, 0, 0, 1, 0, 0,
-                    0, (lf_ * Cf_ * cos(prev_delta[i]) - lr_ * Cr_) / (Iz_ * vx[i]), 0, (lf_ * lf_ * Cf_ * cos(prev_delta[i]) + lr_ * lr_ * Cr_) / (Iz_ * vx[i]), -lf_ * Cf_ * cos(prev_delta[i]) / Iz_, 0, 
-                    0, 0, 0, 0, 0, 1,
-                    0, 0, 0, 0, - omega_ * omega_, - 2.0 * damp_ * omega_;
-
-            // Define vector b
-            B[i] << 0, 0, 0, 0, 0, omega_ * omega_;
-
-            // Eigen::MatrixXd A_discrete = (A[i] * Ts_).exp(); // Matrix exponential of A * Ts_
-
-            // Discrete-time system matrix C
-            // C[i] = A_discrete;
-            Eigen::MatrixXd I = Eigen::MatrixXd::Identity(n_states_, n_states_);
-            C[i] = I + A[i] * Ts_;
-
-            // For D, you can approximate the integral with the following:
-            // D[i] = (A_discrete - I) * A[i].ldlt().solve(B[i]);
-            D[i] = B[i] * Ts_;
+            model.getDiscreteMatrices(prev_state, prev_u, vx[i], C[i], D[i], W[i]);
         }
 
         // Build S and T matrices
