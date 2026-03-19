@@ -200,7 +200,7 @@ int main(int argc, char **argv){
     auto node = std::make_shared<Manager>();
 
     rclcpp::on_shutdown([node]() {
-        RCLCPP_ERROR(rclcpp::get_logger("ltv_mpc"),"Shutting down node...");
+        RCLCPP_ERROR(rclcpp::get_logger("fuzzy_mpc"),"Shutting down node...");
         rclcpp::shutdown();
     });
 

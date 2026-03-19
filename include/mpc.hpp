@@ -158,7 +158,7 @@ class MPC {
         file << vector[vector.size() - 1] << "\n";
 
         file.close();
-        std::cout << "[ltv_mpc] " << vectorname << " saved to " << filename << std::endl;
+        std::cout << "[fuzzy_mpc] " << vectorname << " saved to " << filename << std::endl;
     }
 
     // Debugging function to append a single row to a CSV file
@@ -179,7 +179,7 @@ class MPC {
         file << vector(vector.size() - 1) << "\n";
         
         file.close();
-        std::cout << "[ltv_mpc] " << vectorname << " saved to " << filename << std::endl;
+        std::cout << "[fuzzy_mpc] " << vectorname << " saved to " << filename << std::endl;
     }
 
   public:   

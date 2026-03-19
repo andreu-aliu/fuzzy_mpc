@@ -61,18 +61,18 @@ inline void fill_config(Config& cfg, rclcpp::Node* node)
     node->get_parameter_or("MPC.vx_to_finish_init", cfg.mpc.vx_to_finish_init, 5.0);
 
     // Topics
-    node->get_parameter_or("Topics.InState",     cfg.topics.in_state,     std::string("/AS/C/state"));
-    node->get_parameter_or("Topics.InPlanner",   cfg.topics.in_planner,   std::string("/AS/C/trajectory/locator"));
-    node->get_parameter_or("Topics.InVelocities",cfg.topics.in_velocity,  std::string("/AS/C/pid/velocity"));
-    node->get_parameter_or("Topics.OutSteering", cfg.topics.out_steering, std::string("/AS/C/steering"));
-    node->get_parameter_or("Topics.OutDuration", cfg.topics.out_duration, std::string("/AS/C/ltv_mpc/duration"));
+    node->get_parameter_or("Topics.InState",     cfg.topics.in_state,     std::string("/as/c/state"));
+    node->get_parameter_or("Topics.InPlanner",   cfg.topics.in_planner,   std::string("/as/c/trajectory/locator"));
+    node->get_parameter_or("Topics.InVelocities",cfg.topics.in_velocity,  std::string("/as/c/pid/velocity"));
+    node->get_parameter_or("Topics.OutSteering", cfg.topics.out_steering, std::string("/as/c/steering"));
+    node->get_parameter_or("Topics.OutDuration", cfg.topics.out_duration, std::string("/as/c/fuzzy_mpc/duration"));
 
-    node->get_parameter_or("Topics.Vis.PredictedSteering", cfg.topics.vis.predictedSteering, std::string("/AS/C/mpc/vis/predicted/steering"));
-    node->get_parameter_or("Topics.Vis.PredictedPath",     cfg.topics.vis.predictedPath,     std::string("/AS/C/mpc/vis/predicted/path"));
-    node->get_parameter_or("Topics.Vis.PredictedHeading",  cfg.topics.vis.predictedHeading,  std::string("/AS/C/mpc/vis/predicted/heading"));
-    node->get_parameter_or("Topics.Vis.ActualPath",        cfg.topics.vis.actualPath,        std::string("/AS/C/mpc/vis/actual/path"));
-    node->get_parameter_or("Topics.Debug.OutLateralError", cfg.topics.debug.out_lateral_error, std::string("/AS/C/mpc/debug/lateralError"));
-    node->get_parameter_or("Topics.Debug.OutHeadingError", cfg.topics.debug.out_heading_error, std::string("/AS/C/mpc/debug/headingError"));
+    node->get_parameter_or("Topics.Vis.PredictedSteering", cfg.topics.vis.predictedSteering, std::string("/as/c/mpc/vis/predicted/steering"));
+    node->get_parameter_or("Topics.Vis.PredictedPath",     cfg.topics.vis.predictedPath,     std::string("/as/c/mpc/vis/predicted/path"));
+    node->get_parameter_or("Topics.Vis.PredictedHeading",  cfg.topics.vis.predictedHeading,  std::string("/as/c/mpc/vis/predicted/heading"));
+    node->get_parameter_or("Topics.Vis.ActualPath",        cfg.topics.vis.actualPath,        std::string("/as/c/mpc/vis/actual/path"));
+    node->get_parameter_or("Topics.Debug.OutLateralError", cfg.topics.debug.out_lateral_error, std::string("/as/c/mpc/debug/lateralError"));
+    node->get_parameter_or("Topics.Debug.OutHeadingError", cfg.topics.debug.out_heading_error, std::string("/as/c/mpc/debug/headingError"));
 }
 
 // From ROS
@@ -111,7 +111,7 @@ Eigen::VectorXd velsMsg(const cat_msgs::msg::CarVelocityArray::SharedPtr& msg) {
 
     if (n < cfg.mpc.n_horizon) {
         if (cfg.mpc.verbose)
-            RCLCPP_WARN(rclcpp::get_logger("ltv_mpc"), "MPC: Velocity profile too short!");
+            RCLCPP_WARN(rclcpp::get_logger("fuzzy_mpc"), "MPC: Velocity profile too short!");
     }
 
     Eigen::VectorXd vels(n);

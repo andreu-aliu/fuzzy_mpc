@@ -1,5 +1,5 @@
 as/c:  
-  ltv_mpc:
+  fuzzy_mpc:
     ros__parameters:
       profile: true
 
@@ -24,7 +24,7 @@ as/c:
         Disc: 0.025
         latency: 1.0
         
-        verbose: false
+        verbose: true
 
         save_debug: false
 

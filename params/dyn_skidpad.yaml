@@ -1,5 +1,5 @@
 as/c:
-  ltv_mpc:
+  fuzzy_mpc:
     ros__parameters:
       MPC:
         latency: 2.0
