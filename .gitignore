@@ -1,2 +1,11 @@
 .vscode/
 *.asv
+
+# Ignore Python bytecode caches
+__pycache__/
+*.py[cod]
+*.pyc
+
+# Ignore all CSV files inside debug/ (top-level and subfolders)
+debug/*.csv
+debug/**/*.csv
