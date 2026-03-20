@@ -1,7 +1,9 @@
 as/c:  
   fuzzy_mpc:
     ros__parameters:
+
       profile: true
+      debug_path: "as/control/fuzzy_mpc/"  # Debug path from ROS2 workspace
 
       Car:
         m: 215.0      # Car's mass

@@ -8,6 +8,8 @@ public:
 
     virtual ~Model() = default;
 
+    virtual void initialize() = 0;
+
     virtual void getDiscreteMatrices(
         const Eigen::VectorXd& x,
         const Eigen::VectorXd& u,

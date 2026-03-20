@@ -13,6 +13,7 @@ class Anfis
 public:
     explicit Anfis(const std::string& yaml_path)
     {
+        std::cout << "Loading ANFIS model from " << yaml_path << std::endl;
         loadModel(yaml_path);
     }
 

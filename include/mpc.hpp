@@ -18,6 +18,7 @@
 #include <as_lib/utils/Profiler.hpp>
 
 #include "models/ltv_model.hpp"
+#include "models/anfis_model.hpp"
 
 class Point : public std::array<double, 2> {
     public:
@@ -29,7 +30,7 @@ class MPC {
   private:
     Config& cfg;
     Solver solver;
-    LtvModel model;
+    std::unique_ptr<Model> model;//LtvModel model;
 
     // KDTree for the trajectory
     kdt::KDTree<Point> planner_tree_;
@@ -193,6 +194,11 @@ class MPC {
     void initialize(){
         
         std::cout << "Initializing MPC..." << std::endl;
+
+        // Model
+        model = std::make_unique<AnfisModel>();
+        model->initialize();
+
         // Save recurrent parameters
         n_states_ = cfg.mpc.n_states;
         n_controls_ = cfg.mpc.n_controls;
@@ -561,7 +567,7 @@ class MPC {
             Eigen::VectorXd prev_u = Eigen::VectorXd::Zero(n_controls_);
             prev_u(0, 0) = prev_delta[i];
 
-            model.getDiscreteMatrices(prev_state, prev_u, vx[i], C[i], D[i], W[i]);
+            model->getDiscreteMatrices(prev_state, prev_u, vx[i], C[i], D[i], W[i]);
         }
 
         // Build S and T matrices

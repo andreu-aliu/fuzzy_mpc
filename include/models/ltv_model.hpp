@@ -9,6 +9,11 @@ class LtvModel : public Model
 public:
     LtvModel() = default;
 
+    void initialize() override
+    {
+        // No initialization needed for the LTV model
+    }
+    
     void getDiscreteMatrices(
         const Eigen::VectorXd& x,
         const Eigen::VectorXd& u,
@@ -19,7 +24,6 @@ public:
     ) const override
     {
         PROFC_NODE_;
-
         Config& cfg = Config::getInstance();
 
         // Resize matreix for safety

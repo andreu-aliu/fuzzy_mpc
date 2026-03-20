@@ -18,19 +18,43 @@ fid = fopen(norm_file, 'w');
 fprintf(fid,"normalization:\n");
 
 fprintf(fid,"  mu: [");
-fprintf(fid,"%f ", input_norm.mu);
+for k = 1:length(input_norm.mu)
+    if k < length(input_norm.mu)
+        fprintf(fid,"%f, ", input_norm.mu(k));
+    else
+        fprintf(fid,"%f",  input_norm.mu(k));
+    end
+end
 fprintf(fid,"]\n");
 
 fprintf(fid,"  sigma: [");
-fprintf(fid,"%f ", input_norm.sigma);
+for k = 1:length(input_norm.sigma)
+    if k < length(input_norm.sigma)
+        fprintf(fid,"%f, ", input_norm.sigma(k));
+    else
+        fprintf(fid,"%f",  input_norm.sigma(k));
+    end
+end
 fprintf(fid,"]\n");
 
 fprintf(fid,"  x_min: [");
-fprintf(fid,"%f ", input_norm.x_min);
+for k = 1:length(input_norm.x_min)
+    if k < length(input_norm.x_min)
+        fprintf(fid,"%f, ", input_norm.x_min(k));
+    else
+        fprintf(fid,"%f",  input_norm.x_min(k));
+    end
+end
 fprintf(fid,"]\n");
 
 fprintf(fid,"  x_max: [");
-fprintf(fid,"%f ", input_norm.x_max);
+for k = 1:length(input_norm.x_max)
+    if k < length(input_norm.x_max)
+        fprintf(fid,"%f, ", input_norm.x_max(k));
+    else
+        fprintf(fid,"%f",  input_norm.x_max(k));
+    end
+end
 fprintf(fid,"]\n");
 
 fclose(fid);
@@ -68,7 +92,11 @@ for m = 1:length(model_list)
             fprintf(fid,"    - [");
 
             for k = 1:length(params)
-                fprintf(fid,"%f ", params(k));
+                if k < length(params)
+                    fprintf(fid,"%f, ", params(k));   % comma here
+                else
+                    fprintf(fid,"%f", params(k));     % last element no comma
+                end
             end
 
             fprintf(fid,"]\n");
@@ -89,7 +117,11 @@ for m = 1:length(model_list)
         fprintf(fid,"  - [");
 
         for k = 1:length(params)
-            fprintf(fid,"%f ", params(k));
+            if k < length(params)
+                fprintf(fid,"%f, ", params(k));
+            else
+                fprintf(fid,"%f", params(k));
+            end
         end
 
         fprintf(fid,"]\n");

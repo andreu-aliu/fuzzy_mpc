@@ -5,9 +5,12 @@ import os
 from launch.substitutions import LaunchConfiguration
 
 def generate_launch_description():
+
+    # Read the workspace path
     pkg_share = get_package_share_directory('fuzzy_mpc')
-    ws_root = os.path.abspath(os.path.join(pkg_share, "../../../../"))
-    debug_path = os.path.join(ws_root,"src/as/control/fuzzy_mpc/test/data/")
+    ws_path = os.path.abspath(
+        os.path.join(pkg_share, '..', '..', '..', '..')
+    )
 
     params_file = os.path.join(pkg_share, 'params', 'params.yaml')
     dyn_file    = os.path.join(pkg_share, 'params', 'dyn_trackdrive.yaml')
@@ -19,10 +22,11 @@ def generate_launch_description():
             name='fuzzy_mpc',
             namespace='as/c',
             output='screen',
+            prefix = ['gnome-terminal -- gdb --args'], #Debug only
             parameters=[    
                 params_file,                        # Generic parameters of fuzzy_mpc
                 dyn_file,                           # Specific event parameters
-                {'MPC.debug_path': debug_path},     # Set debug_path parameter
+                {'ws_path': ws_path},               # Set workspace path
                 {'use_sim_time': LaunchConfiguration('use_sim_time', default="false")}
             ]
         ),

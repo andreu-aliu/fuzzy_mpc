@@ -6,7 +6,7 @@ project(fuzzy_mpc LANGUAGES C CXX)
 # ------------------------------------------------------------------------------
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_BUILD_TYPE "Release")
+set(CMAKE_BUILD_TYPE "Debug") # TODO: Release
 
 add_compile_options(-O3 -march=native -mavx2 -mtune=native -DNDEBUG -funroll-loops -fno-math-errno -ffast-math -fstrict-aliasing)
 add_compile_definitions(EIGEN_MAX_ALIGN_BYTES=64)
@@ -24,6 +24,8 @@ find_package(OpenMP)
 find_package(cat_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(as_lib CONFIG REQUIRED)
+find_package(yaml-cpp REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 
 include_directories(
   include
@@ -67,6 +69,7 @@ add_executable(${PROJECT_NAME} src/main.cpp)
 
 target_link_libraries(${PROJECT_NAME}
   as_lib::as_lib
+  yaml-cpp
 )
 
 ament_target_dependencies(${PROJECT_NAME}
@@ -76,6 +79,7 @@ ament_target_dependencies(${PROJECT_NAME}
   nav_msgs
   cat_msgs
   tf2
+  ament_index_cpp
 )
 
 target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX)
@@ -108,6 +112,12 @@ install(
 # Install config files (YAML)
 install(
   DIRECTORY params
+  DESTINATION share/${PROJECT_NAME}
+)
+
+# Install model files (YAML)
+install(
+  DIRECTORY models
   DESTINATION share/${PROJECT_NAME}
 )
 
