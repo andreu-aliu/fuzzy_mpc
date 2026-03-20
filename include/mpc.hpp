@@ -146,14 +146,14 @@ class MPC {
 
     // Debugging function to append a single row to a CSV file
     void appendSingleRowToCSV(const std::vector<double>& vector, std::string vectorname){
-        std::string filename = cfg.mpc.debug_path + vectorname + ".csv";
+        std::string filename = cfg.ws_path + cfg.debug_path + "/" + vectorname + ".csv";
 
         // Open the CSV file in append mode
         std::ofstream file(filename, std::ios::app);
 
         if (!file.is_open())
         {
-            std::cerr << "Error: Could not open csv for writing" << std::endl;
+            std::cerr << "Error: Could not open csv for writing: " << filename << std::endl;
             return;
         }
 
@@ -168,13 +168,13 @@ class MPC {
 
     // Debugging function to append a single row to a CSV file
     void appendSingleRowToCSV(const Eigen::VectorXd& vector, std::string vectorname){
-        std::string filename = cfg.mpc.debug_path + vectorname + ".csv";        
+        std::string filename = cfg.ws_path + cfg.debug_path + "/" + vectorname + ".csv";        
         // Open the CSV file in append mode
         std::ofstream file(filename, std::ios::app);
         
         if (!file.is_open())
         {
-            std::cerr << "Error: Could not open csv for writing" << std::endl;
+            std::cerr << "Error: Could not open csv for writing: " << filename << std::endl;
             return;
         }
         

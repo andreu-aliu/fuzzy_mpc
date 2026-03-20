@@ -6,7 +6,7 @@ struct Config{
 
     bool profile;
     std::string ws_path;
-    std::string node_path;
+    std::string debug_path;
     std::string share_path;
 
     // Car
@@ -34,7 +34,6 @@ struct Config{
         double latency;     // actuation latency [s]
         
         bool verbose;       // verbosity flag
-        std::string debug_path; // TODO: Delete, not used
         bool save_debug;
         
         // state weights

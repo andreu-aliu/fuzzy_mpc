@@ -19,7 +19,7 @@ inline void fill_config(Config& cfg, rclcpp::Node* node)
 {
     node->get_parameter("profile", cfg.profile);
     node->get_parameter("ws_path", cfg.ws_path);
-    node->get_parameter("node_path", cfg.node_path);
+    node->get_parameter("debug_path", cfg.debug_path);
     cfg.share_path = ament_index_cpp::get_package_share_directory("fuzzy_mpc") + "/";
 
     // Car parameters
@@ -44,9 +44,7 @@ inline void fill_config(Config& cfg, rclcpp::Node* node)
     node->get_parameter_or("MPC.latency",    cfg.mpc.latency,    0.0);
 
     node->get_parameter_or("MPC.verbose",    cfg.mpc.verbose,    false);
-    node->get_parameter("MPC.debug_path",    cfg.mpc.debug_path);
     node->get_parameter_or("MPC.save_debug", cfg.mpc.save_debug, false);
-    std::cout << "Debug path: " << cfg.mpc.debug_path << std::endl;
 
     node->get_parameter_or("MPC.q_lat",      cfg.mpc.q_lat,      1.0);
     node->get_parameter_or("MPC.q_vy",       cfg.mpc.q_vy,       1.0);

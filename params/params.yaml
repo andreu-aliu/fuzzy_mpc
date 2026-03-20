@@ -3,7 +3,7 @@ as/c:
     ros__parameters:
 
       profile: true
-      debug_path: "as/control/fuzzy_mpc/"  # Debug path from ROS2 workspace
+      debug_path: "/src/as/control/fuzzy_mpc/debug"  # Debug path from ROS2 workspace
 
       Car:
         m: 215.0      # Car's mass
@@ -26,9 +26,9 @@ as/c:
         Disc: 0.025
         latency: 1.0
         
-        verbose: true
+        verbose: false
 
-        save_debug: false
+        save_debug: true
 
         q_lat: 2.0
         q_vy: 0.0
