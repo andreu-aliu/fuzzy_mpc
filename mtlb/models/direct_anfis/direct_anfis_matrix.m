@@ -14,6 +14,11 @@ end
 % Normalization params
 mu = direct_anfis.norm.mu(:)';
 sg = direct_anfis.norm.sigma(:)';
+xmin = direct_anfis.norm.x_min(:)';
+xmax = direct_anfis.norm.x_max(:)';
+assert(all(isfinite(mu)), 'mu invalid');
+assert(all(isfinite(sg)), 'sigma invalid');
+assert(all(abs(sg) > 1e-8), 'sigma too small or zero');
 
 % Initialization
 dt = 0.01;
@@ -24,6 +29,30 @@ y = X_pred(1); vy = X_pred(2); psi = X_pred(3); r = X_pred(4);
 
 % Anfis matrix for the predicted state
 X_in = [X_pred(2) X_pred(4) vx U_pred(1) U_pred(2)];
+
+% Detect extrapolation
+mask_low  = X_in < xmin;
+mask_high = X_in > xmax;
+
+if any(mask_low) || any(mask_high)
+
+    fprintf('\n===== ANFIS EXTRAPOLATION DETECTED =====\n');
+
+    labels = {'vy','r','vx','st','mz'};
+
+    for j = 1:length(X_in)
+        if mask_low(j) || mask_high(j)
+            fprintf('%s: value = %+8.4f | min = %+8.4f | max = %+8.4f  <-- OUT\n', ...
+                labels{j}, X_in(j), xmin(j), xmax(j));
+        else
+            fprintf('%s: value = %+8.4f | min = %+8.4f | max = %+8.4f\n', ...
+                labels{j}, X_in(j), xmin(j), xmax(j));
+        end
+    end
+
+    fprintf('========================================\n\n');
+end
+X_in = min(max(X_in, direct_anfis.norm.x_min(:)'), direct_anfis.norm.x_max(:)'); % Clamp
 Xin_n = (X_in - mu) ./ sg;
 
 % Y kinematics

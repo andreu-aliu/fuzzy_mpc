@@ -16,7 +16,7 @@ n_horizon = 60;
 n_states = 4;
 n_inputs = 2;
 
-% Ciscrete model matrices for each step
+% Discrete model matrices for each step
 Ad = cell(n_horizon,1);
 Bd = cell(n_horizon,1);
 Cd = cell(n_horizon,1);
@@ -25,8 +25,34 @@ for i = 1:n_horizon
     to_x = i * n_states;
     from_u = i * n_inputs - n_inputs + 1;
     to_u = i * n_inputs;
-    [Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(x_prev(from_x:to_x), u_prev(from_u:to_u), vx(i));
-    %[Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(x_prev(from_x:to_x), x_ref(from_u:to_u), vx(i));
+
+    xi = x_prev(from_x:to_x);
+    ui = u_prev(from_u:to_u);
+    vxi = vx(i);
+
+    [Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
+    %[Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, x_ref(from_x:to_x), vxi);
+    [A_lin, B_lin, C_lin] = ltv_tv_matrix(xi, x_ref(from_x:to_x), vxi);
+
+    fprintf('step %d\n', i);
+    fprintf('||A_anfis - A_lin|| = %.3e\n', norm(Ad{i} - A_lin));
+    fprintf('||B_anfis - B_lin|| = %.3e\n', norm(Bd{i} - B_lin));
+    fprintf('||C_anfis - C_lin|| = %.3e\n', norm(Cd{i} - C_lin));
+
+    assert(all(isfinite(xi)), 'x_prev invalid at step %d', i);
+    assert(all(isfinite(ui)), 'u_prev invalid at step %d', i);
+    assert(isfinite(vxi), 'vx invalid at step %d', i);
+
+    assert(all(isfinite(Ad{i}(:))), 'Ad invalid at step %d', i);
+    assert(all(isfinite(Bd{i}(:))), 'Bd invalid at step %d', i);
+    assert(all(isfinite(Cd{i}(:))), 'Cd invalid at step %d', i);
+
+    if norm(Ad{i}, inf) > 1e3
+        warning('Large Ad at step %d: norm=%g', i, norm(Ad{i}, inf));
+    end
+    if norm(Bd{i}, inf) > 1e3
+        warning('Large Bd at step %d: norm=%g', i, norm(Bd{i}, inf));
+    end
 end
 
 % Fill matrix T
@@ -89,7 +115,7 @@ Q = diag([
 
 % Initialize P matrix
 P = diag([
-    parmas.p_y/scale_y^2
+    params.p_y/scale_y^2
     params.p_vy/scale_vy^2
     params.p_psi/scale_psi^2
     params.p_r/scale_r^2
@@ -113,9 +139,11 @@ QS = Q_ * S;
 % H matrix
 H = 2 * (S' * QS + R_);
 H = (H + H')/2; % Ensure symetry
+H = H + 1e-8*eye(size(H));
 
 % g vector
 g = 2 * S' * Q_ * (T * x_0 + W - x_ref);
+
 
 % ----------------- Simple solution ---------------------
 % u_opt = -H \ g;
