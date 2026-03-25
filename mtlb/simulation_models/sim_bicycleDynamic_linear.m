@@ -2,6 +2,7 @@ function x_next = sim_bicycleDynamic_linear(X, U, vx_next, dt)
 % BICYCLE DYNAMIC MODEL
 % X = [x, y, psi, vx, vy, r]
 % U = [delta, M_TV]
+% dt: timestep [s]
 
 % Car parameters
 m = 220;
@@ -29,18 +30,21 @@ alpha_r = -atan2((vy - lr*r),vx_eff);
 Fyf = Cf * alpha_f * 2;
 Fyr = Cr * alpha_r * 2;
 
-Fxf = m * vx_next/dt /2;
-Fxr = m * vx_next/dt /2;
+ax = (vx_next - vx)/dt;
+Fx_total = m * ax;
+Fxf = Fx_total/2;
+Fxr = Fx_total/2;
 
 % 3. Equations of motion
 vy_dot = 1/m*(Fxf*sin(delta)+Fyf*cos(delta)+Fyr)-vx*r;
-r_dot = (lf*(Fxf*sin(delta) + Fyf*cos(delta)) - lr*Fyr) / Iz;
+r_dot = (lf*(Fxf*sin(delta) + Fyf*cos(delta)) - lr*Fyr + M_TV) / Iz;
 
 x_dot = vx*cos(psi)-vy*sin(psi);
 y_dot = vx*sin(psi)+vy*cos(psi);
 psi_dot = r;
 
 % 4. Integration (Euler)
-Xdot = [x_dot, y_dot, psi_dot, vx_next, vy_dot, r_dot];
+Xdot = [x_dot, y_dot, psi_dot, 0 , vy_dot, r_dot];
 x_next = X + Xdot*dt;
+x_next(4) = vx_next;
 end

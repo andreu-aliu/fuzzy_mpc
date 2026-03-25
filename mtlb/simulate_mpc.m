@@ -3,9 +3,9 @@ clear all;
 %% Setup
 dataFile = "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG";
 
-% Simulation window
+% Simulation window (from data)
 idx_start = 3000;
-n  = 100;
+n  = 500;
 
 %% LOAD DATA
 data = read_ros2bag(dataFile);
@@ -186,7 +186,7 @@ for k = 1:n-1
     idx = find_closest_point(traj, Xg(1), Xg(2));
 
     % Convert GLOBAL → LOCAL MPC state
-    x_0 = project_to_local_cartesian(traj, idx, meas, k);
+    x_0 = project_to_local_cartesian(traj, idx, Xg);
 
     % Build reference
     [x_ref, vx_ref] = build_reference_local(traj, idx, dt, Np);
@@ -206,11 +206,14 @@ for k = 1:n-1
 
     % Apply first control
     u = u_pred(1,:)';
+    % u = [in.st(k);in.mz(k)]; % Test with actual inputs
     U{k+1} = u;
 
     % Simulate GLOBAL dynamics
+    %X{k+1} = sim_anfis_direct(Xg', u', traj.vx(idx), dt)';
     X{k+1} = sim_bicycleDynamic_linear(Xg', u', traj.vx(idx), dt)';
 
+    fprintf("Iteration %i done\n", k);
 end
 %% PLOT RESULTS
 
@@ -219,8 +222,8 @@ Xg_mat = cell2mat(X')';   % N x 6
 U_mat  = cell2mat(U')';   % N x 2
 
 % Extract global states
-x_sim   = Xg_mat(:,1);
-y_sim   = Xg_mat(:,2);
+x_sim = Xg_mat(:,1);
+y_sim = Xg_mat(:,2);
 
 st_sim = U_mat(:,1);
 mz_sim = U_mat(:,2);
@@ -233,19 +236,19 @@ tl = tiledlayout(2,1,'TileSpacing','compact','Padding','compact');
 % ===== TOP: GLOBAL TRAJECTORY =====
 ax1 = nexttile; hold on; grid on; axis equal;
 
-% Reference trajectory (white solid)
-plot(traj.x, traj.y, 'w', 'LineWidth', 2);
+% Reference path from measurements (white solid)
+plot(meas.x, meas.y, 'w', 'LineWidth', 2);
 
 % Simulated path (white dashed)
-plot(x_sim, y_sim, 'r', 'LineWidth', 2);
+plot(x_sim, y_sim, '-r', 'LineWidth', 2);
 
 xlabel('X [m]');
 ylabel('Y [m]');
 title('Global Trajectory Tracking');
 
-legend('Reference','Simulated','Location','best');
+legend('Reference (meas)','Simulated','Location','best');
 
-set(gca, 'Color', 'k');   % black background for contrast
+set(gca, 'Color', 'k');   % black background
 
 % ===== BOTTOM: CONTROLS =====
 ax2 = nexttile; hold on; grid on;
@@ -292,33 +295,28 @@ function idx = find_closest_point(traj, x, y)
     [~, idx] = min(dx.^2 + dy.^2);
 end
 
-function x_local = project_to_local_cartesian(traj, idx, meas, k)
+function x_local = project_to_local_cartesian(traj, idx, Xg)
 
-    % Trajectory frame
     xt = traj.x(idx);
     yt = traj.y(idx);
     psi_t = traj.psi(idx);
 
-    % Vehicle
-    xv = meas.x(k);
-    yv = meas.y(k);
-    psi_v = meas.psi(k);
+    xv   = Xg(1);
+    yv   = Xg(2);
+    psi_v= Xg(3);
+    vy   = Xg(5);
+    r    = Xg(6);
 
-    % Relative position
     dx = xv - xt;
     dy = yv - yt;
 
-    % Rotate into trajectory frame
-    x_local_fwd =  cos(psi_t)*dx + sin(psi_t)*dy;
-    y_local     = -sin(psi_t)*dx + cos(psi_t)*dy;
-
-    % Heading error
+    y_local = -sin(psi_t)*dx + cos(psi_t)*dy;
     psi_err = wrapToPi(psi_v - psi_t);
 
     x_local = [y_local;
-               meas.vy(k);
+               vy;
                psi_err;
-               meas.r(k)];
+               r];
 end
 
 function [x_ref, vx_ref] = build_reference_local(traj, idx0, dt, Np)
