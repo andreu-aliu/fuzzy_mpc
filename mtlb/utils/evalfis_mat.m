@@ -23,6 +23,9 @@ function [A, b, y] = evalfis_mat(fis, input)
 
     % Total sum
     y = w_n' * f;
+    if(isnan(y))
+        fprintf("ANFIS input is outside all membership functions");
+    end
     
     % Calculate row matrixes (A, b)
     A = zeros(1, fis.n_in);

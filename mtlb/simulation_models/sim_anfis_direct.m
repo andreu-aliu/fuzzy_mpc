@@ -17,8 +17,14 @@ if(isempty(direct_anfis))
     direct_anfis = S.direct_anfis;
 end
 
-% Build ANFIS input vector
+% Build ANFIS input vector and clamp to trained inputs
 Xin = [vy r vx delta mz];
+mask_low  = Xin < direct_anfis.norm.x_min;
+mask_high = Xin > direct_anfis.norm.x_max;
+if any(mask_low) || any(mask_high)
+    fprintf("Input vector outside training set\n");
+    Xin = min(max(Xin, direct_anfis.norm.x_min), direct_anfis.norm.x_max);
+end
 Xin_n = (Xin - direct_anfis.norm.mu) ./ direct_anfis.norm.sigma;
 
 % Evaluate learned dynamics
@@ -38,4 +44,5 @@ psi_dot = r;
 Xdot = [x_dot, y_dot, psi_dot, 0, vy_dot, r_dot];
 x_next = X + Xdot*dt;
 x_next(4) = vx_next;
+
 end

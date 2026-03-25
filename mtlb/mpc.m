@@ -21,28 +21,40 @@ Ad = cell(n_horizon,1);
 Bd = cell(n_horizon,1);
 Cd = cell(n_horizon,1);
 for i = 1:n_horizon
-    from_x = i * n_states - n_states + 1;
-    to_x = i * n_states;
-    from_u = i * n_inputs - n_inputs + 1;
-    to_u = i * n_inputs;
-
-    xi = x_prev(from_x:to_x);
+    from_u = (i-1)*n_inputs + 1;
+    to_u   = i*n_inputs;
     ui = u_prev(from_u:to_u);
+
+    if i == 1
+        xi = x_0;
+    else
+        from_x = (i-2)*n_states + 1;
+        to_x   = (i-1)*n_states;
+        xi = x_prev(from_x:to_x);
+    end
+
     vxi = vx(i);
+    
+    % Select model for MPC
+    %[Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
+    [Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi);
 
-    [Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
-    %[Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, x_ref(from_x:to_x), vxi);
-    [A_lin, B_lin, C_lin] = ltv_tv_matrix(xi, x_ref(from_x:to_x), vxi);
+    % Stop if 
+    % if(abs(xi) > [1.6567    1.9209   28.1186    0.4580  876.9130]')
+    %     fprintf("Input too large")
+    % end
 
-    fprintf('step %d\n', i);
-    fprintf('||A_anfis - A_lin|| = %.3e\n', norm(Ad{i} - A_lin));
-    fprintf('||B_anfis - B_lin|| = %.3e\n', norm(Bd{i} - B_lin));
-    fprintf('||C_anfis - C_lin|| = %.3e\n', norm(Cd{i} - C_lin));
-
+    % Diference between linear models
+    % [A_lin, B_lin, C_lin] = ltv_tv_matrix(xi, x_ref(from_x:to_x), vxi);
+    % fprintf('step %d\n', i);
+    % fprintf('||A_anfis - A_lin|| = %.3e\n', norm(Ad{i} - A_lin));
+    % fprintf('||B_anfis - B_lin|| = %.3e\n', norm(Bd{i} - B_lin));
+    % fprintf('||C_anfis - C_lin|| = %.3e\n', norm(Cd{i} - C_lin));
+    
+    % Check inputs and matrixes
     assert(all(isfinite(xi)), 'x_prev invalid at step %d', i);
     assert(all(isfinite(ui)), 'u_prev invalid at step %d', i);
     assert(isfinite(vxi), 'vx invalid at step %d', i);
-
     assert(all(isfinite(Ad{i}(:))), 'Ad invalid at step %d', i);
     assert(all(isfinite(Bd{i}(:))), 'Bd invalid at step %d', i);
     assert(all(isfinite(Cd{i}(:))), 'Cd invalid at step %d', i);
@@ -98,7 +110,7 @@ for i = 1:n_horizon
 end
 
 % Scales for normalization
-scale_y   = 1.0;   % m
+scale_y   = 0.3;   % m
 scale_vy  = 0.1;   % m/s
 scale_psi = 0.05;  % rad
 scale_r   = 0.5;   % rad/s
@@ -140,9 +152,16 @@ QS = Q_ * S;
 H = 2 * (S' * QS + R_);
 H = (H + H')/2; % Ensure symetry
 H = H + 1e-8*eye(size(H));
+if any(~isfinite(H(:)))
+    error('H contains NaN or Inf');
+end
 
 % g vector
 g = 2 * S' * Q_ * (T * x_0 + W - x_ref);
+if any(~isfinite(g(:)))
+    error('g contains NaN or Inf');
+end
+
 
 
 % ----------------- Simple solution ---------------------
@@ -180,6 +199,10 @@ end
 
 % Prediction
 x_pred = S * u_opt + T * x_0 + W;
-
-
+if any(~isfinite(x_pred(:)))
+    error('Xpred contains NaN or Inf');
+end
+if any(~isfinite(u_opt(:)))
+    error('u_opt contains NaN or Inf');
+end
 end

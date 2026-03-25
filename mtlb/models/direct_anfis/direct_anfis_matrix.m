@@ -30,7 +30,7 @@ y = X_pred(1); vy = X_pred(2); psi = X_pred(3); r = X_pred(4);
 % Anfis matrix for the predicted state
 X_in = [X_pred(2) X_pred(4) vx U_pred(1) U_pred(2)];
 
-% Detect extrapolation
+% Detect extrapolation and clamp
 mask_low  = X_in < xmin;
 mask_high = X_in > xmax;
 

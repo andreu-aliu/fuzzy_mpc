@@ -27,7 +27,7 @@ function mpc_debug_plot(k, x0, x_ref, x_pred, u_pred, params, opts)
     Np = size(x_ref,1);
     t_pred = 1:Np;
 
-    if isempty(initialized)
+    if isempty(initialized) || ~isgraphics(hFig) || ~isgraphics(hLines.y_ref)
 
         hFig = figure(fig_id); clf;
         tl = tiledlayout(3,2,'TileSpacing','compact','Padding','compact');
