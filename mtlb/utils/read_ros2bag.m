@@ -61,7 +61,7 @@ Trr = zeros(Nt,1);
 for i = 1:Nt
     msg = tvMsgs{i};
 
-    mz(i)  = msg.actual_mz;
+    mz(i)  = msg.desired_mz;
     Tfl(i) = msg.front_left_torque;
     Tfr(i) = msg.front_right_torque;
     Trl(i) = msg.rear_left_torque;

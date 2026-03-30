@@ -36,13 +36,8 @@ for i = 1:n_horizon
     vxi = vx(i);
     
     % Select model for MPC
-    %[Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
-    [Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi);
-
-    % Stop if 
-    % if(abs(xi) > [1.6567    1.9209   28.1186    0.4580  876.9130]')
-    %     fprintf("Input too large")
-    % end
+    [Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
+    %[Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi);
 
     % Diference between linear models
     % [A_lin, B_lin, C_lin] = ltv_tv_matrix(xi, x_ref(from_x:to_x), vxi);

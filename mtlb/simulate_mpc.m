@@ -5,7 +5,7 @@ dataFile = "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG";
 
 % Simulation window (from data)
 idx_start = 3000;
-n  = 500;
+n  = 300;
 
 %% LOAD DATA
 data = read_ros2bag(dataFile);
@@ -132,24 +132,24 @@ nu = 2;
 dt = 0.01;
 
 % Weights
-params.q_y  = 600;
+params.q_y  = 800;
 params.q_vy = 10;
-params.q_psi= 10;
-params.q_r  = 10;
+params.q_psi= 20;
+params.q_r  = 40;
 
-params.p_y  = 2000;
+params.p_y  = 8000;
 params.p_vy = 10;
-params.p_psi= 10;
+params.p_psi= 100;
 params.p_r  = 10;
 
-params.r_st = 5;
-params.r_mz = 1000; 
+params.r_st = 50;
+params.r_mz = 50; 
 
 % Bounds
 params.min_st = -0.436;
 params.max_st = 0.436;
-params.min_mz = -0;
-params.max_mz = 0;
+params.min_mz = -200;
+params.max_mz = 200;
 
 % Debug options
 debug_opts.enabled = false;
@@ -199,20 +199,20 @@ for k = 1:n-1
     [x_pred_vec, u_pred_vec] = mpc(x_0, x_ref_vec, x_pred_vec, u_pred_vec, vx_ref, params);
 
     % Debug plots 
-    %mpc_debug_plot(k, x_0, x_ref, x_pred, u_pred, params, debug_opts);
+    mpc_debug_plot(k, x_0, x_ref, x_pred, u_pred, params, debug_opts);
 
     x_pred = reshape(x_pred_vec, nx, []).';
     u_pred = reshape(u_pred_vec, nu, []).';
 
     % Apply first control
     u = u_pred(1,:)';
-    u = [in.st(k);in.mz(k)]; % Test with measured inputs
+    % u = [in.st(k);in.mz(k)]; % Test with measured inputs
 
     U{k+1} = u;
 
     % Simulate GLOBAL dynamics
-    X{k+1} = sim_anfis_direct(Xg', u', traj.vx(idx), dt)';
-    %X{k+1} = sim_bicycleDynamic_linear(Xg', u', traj.vx(idx), dt)';
+    %X{k+1} = sim_anfis_direct(Xg', u', traj.vx(idx), dt)';
+    X{k+1} = sim_bicycleDynamic_linear(Xg', u', traj.vx(idx), dt)';
 
     fprintf("Iteration %i done\n", k);
 end

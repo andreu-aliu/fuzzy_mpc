@@ -22,8 +22,10 @@ Xin = [vy r vx delta mz];
 mask_low  = Xin < direct_anfis.norm.x_min;
 mask_high = Xin > direct_anfis.norm.x_max;
 if any(mask_low) || any(mask_high)
-    fprintf("Input vector outside training set\n");
+    fprintf("Simulator model: input vector outside training range\n");
     Xin = min(max(Xin, direct_anfis.norm.x_min), direct_anfis.norm.x_max);
+    vy = Xin(1);
+    r = Xin(2);
 end
 Xin_n = (Xin - direct_anfis.norm.mu) ./ direct_anfis.norm.sigma;
 

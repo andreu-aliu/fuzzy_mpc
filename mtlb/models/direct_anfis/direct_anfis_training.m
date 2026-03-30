@@ -2,7 +2,7 @@
 % state:  [y vy psi r] normalized
 % inputs: [delta mz]
 % output: [vy_dot r_dot] 
-cd /home/andreu/bcnemotorsport/adaptive_mpc/fuzzy-mpc/mtlb; addpath(genpath('/home/andreu/bcnemotorsport/adaptive_mpc/fuzzy-mpc/mtlb'))
+cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'))
 clear all
 
 % List of data path (csv), start, end
@@ -12,9 +12,10 @@ data_paths = {"/home/andreu/bcnemotorsport/data/simu/acceleration_3", [], [];
               "/home/andreu/bcnemotorsport/data/simu/skidpad_13", [], [];
               "/home/andreu/bcnemotorsport/data/simu/skidpad_15", [], [];
               "/home/andreu/bcnemotorsport/data/simu/skidpad_5", [], [];
-              "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG", [], [];
+              % "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG", [], [];
               "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSI", [], [];
-              "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSS", [], [];};
+              "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSS", [], [];
+              "/home/andreu/bcnemotorsport/data/simu/teleop", [], [];};
 keep_factor = 5; % Keep one of every - samples
 validation_fraction = 0.2; % Define the fraction of data for validation
 seed = 2;

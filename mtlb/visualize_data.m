@@ -1,8 +1,8 @@
-cd /home/andreu/ros_ws/src/as/control/fuzzy-mpc/mtlb; addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy-mpc/mtlb'))
+cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'))
 clear all
 %% Setup
 
-data_path = "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG";
+data_path = "/home/andreu/bcnemotorsport/data/simu/teleop";
 
 %% Load data 
 data = read_ros2bag(data_path);

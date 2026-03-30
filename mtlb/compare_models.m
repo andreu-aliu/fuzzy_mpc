@@ -1,11 +1,11 @@
-cd /home/andreu/ros_ws/src/as/control/fuzzy-mpc/mtlb; addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy-mpc/mtlb'))
-clear all
+cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'))
+clear all;
 %% Setup
 dataFile = "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG";
 
 % Simulation window
-idx_start = 450;
-horizon  = 60;
+idx_start = 600;
+horizon  = 1000;
 
 %% LOAD DATA
 data = read_ros2bag(dataFile);
