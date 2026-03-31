@@ -5,11 +5,13 @@
 %    x_pred     [4*60,1]
 %    u_pred     [2*60,1]
 %    vx         [60,1]
-%    params: weights and constraints
+%    params:    weights and constraints
 % Output:
-%    u_opt      [2*60,1]
+%    x_pred     [4*60,1]: Predicted states for the optimal inputs
+%    u_opt      [2*60,1]: Optimal inputs
+%    x_comp     [4*60,1]: Predicted states for the previous (or compare) inputs
 
-function [x_pred, u_opt]= mpc(x_0, x_ref, x_prev, u_prev, vx, params)
+function [x_pred, u_opt, x_comp]= mpc(x_0, x_ref, x_prev, u_prev, vx, params)
 
 % Parameters of the MPC
 n_horizon = 60;
@@ -36,8 +38,8 @@ for i = 1:n_horizon
     vxi = vx(i);
     
     % Select model for MPC
-    [Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
-    %[Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi);
+    %[Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
+    [Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi);
 
     % Diference between linear models
     % [A_lin, B_lin, C_lin] = ltv_tv_matrix(xi, x_ref(from_x:to_x), vxi);
@@ -194,10 +196,9 @@ end
 
 % Prediction
 x_pred = S * u_opt + T * x_0 + W;
-if any(~isfinite(x_pred(:)))
-    error('Xpred contains NaN or Inf');
-end
-if any(~isfinite(u_opt(:)))
-    error('u_opt contains NaN or Inf');
-end
+
+% Prediction to compare model
+x_comp = S * u_prev + T * x_0 + W;
+
+
 end

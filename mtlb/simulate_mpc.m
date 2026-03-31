@@ -28,11 +28,6 @@ meas.r = data.r(idx_start:idx_end);
 
 meas.psi = compute_path_heading(meas.x, meas.y);
 
-init_state.y = 0;
-init_state.vy = meas.vy(1);
-init_state.psi = 0;
-init_state.r = meas.r(1);
-
 %% CHECK DATA LOADED
 figure('Name','Data check','Position',[100 100 1200 600]);
 
@@ -87,12 +82,12 @@ xlabel('Time [s]');
 ax5 = nexttile(rightLayout); hold on;
 plot(data.time, data.mz, 'w');
 plot(meas.t, in.mz, 'b','LineWidth',1.2);
-ylabel('\delta [rad]');
-title('Steering');
+ylabel('M_z [Nm]');
+title('Yaw moment');
 xlabel('Time [s]');
 
 % Link time axes
-linkaxes([ax1 ax2 ax3 ax4],'x');
+linkaxes([ax1 ax2 ax3 ax4 ax5],'x');
 grid on
 
 %% BUILD TRAJECTORY 
@@ -148,8 +143,8 @@ params.r_mz = 50;
 % Bounds
 params.min_st = -0.436;
 params.max_st = 0.436;
-params.min_mz = -200;
-params.max_mz = 200;
+params.min_mz = -0;
+params.max_mz = 0;
 
 % Debug options
 debug_opts.enabled = false;
@@ -157,11 +152,18 @@ debug_opts.step    = [];     % [] = all, or e.g. 20
 debug_opts.pause   = false;  % true = step-by-step
 debug_opts.figure_id = 99;
 
+% Compare options
+comp_opts.enabled = true;
+comp_opts.step    = [];     % [] = all, or e.g. 20
+comp_opts.pause   = false;  % true = step-by-step
+comp_opts.figure_id = 98;
+
 %% SIMULATE 
 
 % Global state history: [x y psi vx vy r]
 X = cell(n,1);
 U = cell(n,1);
+model_error = NaN(1,n);
 
 % Initial GLOBAL state
 X{1} = [meas.x(1);
@@ -182,27 +184,58 @@ for k = 1:n-1
     % Current global state
     Xg = X{k};
 
-    % Closest trajectory point
-    idx = find_closest_point(traj, Xg(1), Xg(2));
+    % Find global reference
+    X_ref_global = build_reference_global(traj, Xg, dt, Np+1);
 
     % Convert GLOBAL → LOCAL MPC state
-    x_0 = project_to_local_cartesian(traj, idx, Xg);
-
-    % Build reference
-    [x_ref, vx_ref] = build_reference_local(traj, idx, dt, Np);
+    [x_0, ~] = global_to_local_state(Xg, X_ref_global{1});
+    for i = 1:Np
+        [x_ref(i,:), vx_ref(i)] = global_to_local_state(X_ref_global{i+1}, X_ref_global{1});
+    end
 
     % MPC solve
     x_ref_vec  = reshape(x_ref.', [], 1);
     x_pred_vec = reshape(x_pred.', [], 1);
     u_pred_vec = reshape(u_pred.', [], 1);
 
-    [x_pred_vec, u_pred_vec] = mpc(x_0, x_ref_vec, x_pred_vec, u_pred_vec, vx_ref, params);
+    [x_pred_vec, u_pred_vec, ~] = mpc(x_0, x_ref_vec, x_pred_vec, u_pred_vec, vx_ref, params);
+
+    x_pred = reshape(x_pred_vec, nx, []).';
+    u_pred = reshape(u_pred_vec, nu, []).';
 
     % Debug plots 
     mpc_debug_plot(k, x_0, x_ref, x_pred, u_pred, params, debug_opts);
 
-    x_pred = reshape(x_pred_vec, nx, []).';
-    u_pred = reshape(u_pred_vec, nu, []).';
+    % Compare last seen states with mpc predicted. Model error
+    if k > Np+1
+        X_compare = X(k-Np+1:k);
+        U_compare = U(k-Np+1:k);
+        
+        % Convert to local
+        x_comp = NaN(Np,4);
+        u_comp = NaN(Np,2);
+        vx_comp = NaN(Np,1);
+        x_0_comp = global_to_local_state(X_compare{1}, X_compare{1});
+        for i = 1:Np
+            [x_comp(i,:), vx_comp(i)] = global_to_local_state(X_compare{i}, X_compare{1});
+            u_comp(i,:) = U_compare{i}';
+        end
+
+        % Use MPC function again to compute the predicted with 
+        x_comp_vec  = reshape(x_comp.', [], 1);
+        u_comp_vec  = reshape(u_comp.', [], 1);
+
+        [~,~,x_pred_comp_vec] = mpc(x_0_comp, x_comp_vec, x_comp_vec, u_comp_vec, vx_comp, params);
+
+        x_pred_comp = reshape(x_pred_comp_vec, nx, []).';
+
+        % Norm difference
+        model_error(k) = norm(x_pred_comp_vec - x_comp_vec);
+        fprintf("Model error: %.6f\n", model_error(k));
+
+        % Comparation plots
+        mpc_debug_plot(k, x_0_comp, x_comp, x_pred_comp, u_comp, params, comp_opts);
+    end
 
     % Apply first control
     u = u_pred(1,:)';
@@ -232,7 +265,7 @@ mz_sim = U_mat(:,2);
 t_u = meas.t(1:size(U_mat,1));
 
 figure('Name','MPC Results','Position',[100 100 1200 800]);
-tl = tiledlayout(2,1,'TileSpacing','compact','Padding','compact');
+tl = tiledlayout(3,1,'TileSpacing','compact','Padding','compact');
 
 % ===== TOP: GLOBAL TRAJECTORY =====
 ax1 = nexttile; hold on; grid on; axis equal;
@@ -251,7 +284,7 @@ legend('Reference (meas)','Simulated','Location','best');
 
 set(gca, 'Color', 'k');   % black background
 
-% ===== BOTTOM: CONTROLS =====
+% ===== MIDDLE: CONTROLS =====
 ax2 = nexttile; hold on; grid on;
 
 yyaxis left
@@ -265,7 +298,22 @@ ylabel('M_z [Nm]');
 xlabel('Time [s]');
 title('Control Inputs');
 
+legend('Model error','Location','best');
+
+% ===== BOTTOM: MODEL ERROR =====
+ax3 = nexttile; hold on; grid on;
+
+plot(t_u, model_error, 'LineWidth', 1.5);
+ylabel('Vectorn norm difference');
+
+xlabel('Time [s]');
+title('Model Error');
+
 legend('Steering','Yaw moment','Location','best');
+
+linkaxes([ax2 ax3],'x')
+
+
 %%
 
 
@@ -276,8 +324,6 @@ legend('Steering','Yaw moment','Location','best');
 
 
 %% AUXILIAR FUNCTIONS
-
-
 
 function psi_path = compute_path_heading(x, y)
 %COMPUTE_PATH_HEADING Estimate heading of the path from x-y trajectory
@@ -296,42 +342,16 @@ function idx = find_closest_point(traj, x, y)
     [~, idx] = min(dx.^2 + dy.^2);
 end
 
-function x_local = project_to_local_cartesian(traj, idx, Xg)
+function X_ref = build_reference_global(traj, Xg, dt, Np)
+% Build reference state list in global coordinates
+% Global state: [x y psi vx vy r]
 
-    xt = traj.x(idx);
-    yt = traj.y(idx);
-    psi_t = traj.psi(idx);
+    X_ref = cell(Np,1);
+    
+    % Find point closest to actual position
+    idx = find_closest_point(traj, Xg(1), Xg(2));
 
-    xv   = Xg(1);
-    yv   = Xg(2);
-    psi_v= Xg(3);
-    vy   = Xg(5);
-    r    = Xg(6);
-
-    dx = xv - xt;
-    dy = yv - yt;
-
-    y_local = -sin(psi_t)*dx + cos(psi_t)*dy;
-    psi_err = wrapToPi(psi_v - psi_t);
-
-    x_local = [y_local;
-               vy;
-               psi_err;
-               r];
-end
-
-function [x_ref, vx_ref] = build_reference_local(traj, idx0, dt, Np)
-
-    s0   = traj.s(idx0);
-    psi0 = traj.psi(idx0);
-    x0   = traj.x(idx0);
-    y0   = traj.y(idx0);
-
-    x_ref  = zeros(Np,4);
-    vx_ref = zeros(Np,1);
-
-    s_i = s0;
-
+    s_i = traj.s(idx);
     for i = 1:Np
 
         % Use trajectory speed
@@ -349,19 +369,46 @@ function [x_ref, vx_ref] = build_reference_local(traj, idx0, dt, Np)
         y_t   = interp1(traj.s, traj.y, s_i, 'spline');
         psi_t = interp1(traj.s, traj.psi, s_i, 'spline');
 
-        % Transform into local frame
-        dx = x_t - x0;
-        dy = y_t - y0;
-
-        y_local = -sin(psi0)*dx + cos(psi0)*dy;
-        psi_rel = wrapToPi(psi_t - psi0);
-
-        % Fill reference
-        x_ref(i,1) = y_local;
-        x_ref(i,2) = 0;
-        x_ref(i,3) = psi_rel;
-        x_ref(i,4) = 0;
-
-        vx_ref(i) = vx_i;
+        % Build global reference states
+        X_ref{i} = [x_t; y_t; psi_t; vx_i; 0; 0];
     end
 end
+
+function [x_local, vx] = global_to_local_state(X_global, X_ref)
+% Convert global state into local frame defined by X_ref
+% Global state: [x y psi vx vy r]
+% Local state:  [y vy psi r]
+
+    % Extract global state
+    x = X_global(1);
+    y = X_global(2);
+    psi = X_global(3);
+    vx = X_global(4);
+    vy = X_global(5);
+    r = X_global(6);
+
+    % Extract reference state
+    x_ref = X_ref(1);
+    y_ref = X_ref(2);
+    psi_ref = X_ref(3);
+
+    % Relative position
+    dx = x - x_ref;
+    dy = y - y_ref;
+
+    % Rotation: global → local (reference frame)
+    x_local_pos =  cos(psi_ref)*dx + sin(psi_ref)*dy;
+    y_local_pos = -sin(psi_ref)*dx + cos(psi_ref)*dy;
+
+    % Relative heading
+    psi_rel = wrapToPi(psi - psi_ref);
+
+    % Assemble output
+    x_local = zeros(4,1);
+    x_local(1) = y_local_pos;
+    x_local(2) = vy;
+    x_local(3) = psi_rel;
+    x_local(4) = r;
+
+end
+
