@@ -22,7 +22,7 @@ as/c:
         n_planning: 2000
         n_states: 6
         n_controls: 1
-        Ts: 0.025
+        Ts: 0.01
         Disc: 0.025
         latency: 1.0
         
@@ -35,15 +35,19 @@ as/c:
         q_phi: 0.1
         q_r: 0.0
         q_delta: 0.0
+
         r_delta: 0.5
+        
         p_lat: 10.0
         p_vy: 0.0
         p_phi: 10.0
         p_r: 0.0
         p_delta: 0.0
+
         q_lat_init: 2.0
         q_phi_init: 4.0
         q_delta_init: 50.0
+
         r_delta_init: 80.0
 
         vx_to_finish_init: 2.0

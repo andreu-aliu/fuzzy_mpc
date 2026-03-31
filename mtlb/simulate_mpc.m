@@ -126,6 +126,14 @@ nx = 4;
 nu = 2;
 dt = 0.01;
 
+% Scales for normalization
+params.scale_y   = 0.3;   % m
+params.scale_vy  = 0.1;   % m/s
+params.scale_psi = 0.05;  % rad
+params.scale_r   = 0.5;   % rad/s
+params.scale_st  = 0.2;   % rad
+params.scale_mz  = 1000;  % Nm
+
 % Weights
 params.q_y  = 800;
 params.q_vy = 10;
@@ -206,9 +214,20 @@ for k = 1:n-1
     % Debug plots 
     mpc_debug_plot(k, x_0, x_ref, x_pred, u_pred, params, debug_opts);
 
+    % Apply first control
+    u = u_pred(1,:)';
+    % u = [in.st(k);in.mz(k)]; % Test with measured inputs
+
+    U{k+1} = u;
+
+    % Simulate GLOBAL dynamics
+    X{k+1} = sim_anfis_direct(Xg', u', traj.vx(idx), dt)';
+    % X{k+1} = sim_bicycleDynamic_linear(Xg', u', traj.vx(idx), dt)';
+    % X{k+1} = sim_ltv(Xg', u', vx_ref(1), dt);
+
     % Compare last seen states with mpc predicted. Model error
-    if k > Np+1
-        X_compare = X(k-Np+1:k);
+    if k > Np
+        X_compare = X(k-Np+1:k+1);
         U_compare = U(k-Np+1:k);
         
         % Convert to local
@@ -217,7 +236,7 @@ for k = 1:n-1
         vx_comp = NaN(Np,1);
         x_0_comp = global_to_local_state(X_compare{1}, X_compare{1});
         for i = 1:Np
-            [x_comp(i,:), vx_comp(i)] = global_to_local_state(X_compare{i}, X_compare{1});
+            [x_comp(i,:), vx_comp(i)] = global_to_local_state(X_compare{i+1}, X_compare{1});
             u_comp(i,:) = U_compare{i}';
         end
 
@@ -230,22 +249,19 @@ for k = 1:n-1
         x_pred_comp = reshape(x_pred_comp_vec, nx, []).';
 
         % Norm difference
-        model_error(k) = norm(x_pred_comp_vec - x_comp_vec);
+        err = reshape(x_pred_comp_vec - x_comp_vec, 4, []);
+
+        err(1,:) = err(1,:) / params.scale_y;
+        err(2,:) = err(2,:) / params.scale_vy;
+        err(3,:) = err(3,:) / params.scale_psi;
+        err(4,:) = err(4,:) / params.scale_r;
+        
+        model_error(k) = mean(vecnorm(err,2,1));
         fprintf("Model error: %.6f\n", model_error(k));
 
         % Comparation plots
         mpc_debug_plot(k, x_0_comp, x_comp, x_pred_comp, u_comp, params, comp_opts);
     end
-
-    % Apply first control
-    u = u_pred(1,:)';
-    % u = [in.st(k);in.mz(k)]; % Test with measured inputs
-
-    U{k+1} = u;
-
-    % Simulate GLOBAL dynamics
-    %X{k+1} = sim_anfis_direct(Xg', u', traj.vx(idx), dt)';
-    X{k+1} = sim_bicycleDynamic_linear(Xg', u', traj.vx(idx), dt)';
 
     fprintf("Iteration %i done\n", k);
 end
@@ -354,20 +370,20 @@ function X_ref = build_reference_global(traj, Xg, dt, Np)
     s_i = traj.s(idx);
     for i = 1:Np
 
-        % Use trajectory speed
-        vx_i = interp1(traj.s, traj.vx, s_i, 'linear');
-
-        % Propagate arc-length using trajectory speed
-        s_i = s_i + vx_i * dt;
-
         if s_i > traj.s(end)
             s_i = traj.s(end);
         end
+
+        % Use trajectory speed
+        vx_i = interp1(traj.s, traj.vx, s_i, 'linear');
 
         % Interpolate trajectory
         x_t   = interp1(traj.s, traj.x, s_i, 'spline');
         y_t   = interp1(traj.s, traj.y, s_i, 'spline');
         psi_t = interp1(traj.s, traj.psi, s_i, 'spline');
+
+        % Propagate arc-length using trajectory speed
+        s_i = s_i + vx_i * dt;
 
         % Build global reference states
         X_ref{i} = [x_t; y_t; psi_t; vx_i; 0; 0];

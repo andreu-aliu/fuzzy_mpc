@@ -11,7 +11,7 @@
 
 #include <eigen3/Eigen/Dense>
 #include <unsupported/Eigen/MatrixFunctions>
-
+ 
 #include "utils/kdtree.hpp"
 #include "utils/solver.hpp"
 #include "utils/Config.hpp"
@@ -30,7 +30,7 @@ class MPC {
   private:
     Config& cfg;
     Solver solver;
-    std::unique_ptr<Model> model;//LtvModel model;
+    std::unique_ptr<Model> model;
 
     // KDTree for the trajectory
     kdt::KDTree<Point> planner_tree_;
@@ -62,14 +62,8 @@ class MPC {
     double Ts_, disc_;
     bool verbose_;
 
-    // Car parameters
-    double m_, Iz_, lf_, lr_, Cf_, Cr_;
-
     // Steering dynamics parameters
     double damp_, omega_, alpha_delta_dot, delta_dot_filtered, last_delta;
-
-    // Tire stiffness parameters
-    double Bf, Br, Cf, Cr, Df, Dr;
 
     // Weights
     int latency_;
@@ -207,21 +201,6 @@ class MPC {
         Ts_ = cfg.mpc.Ts;
         disc_ = cfg.mpc.disc;
         verbose_ = cfg.mpc.verbose;
-
-        // Car parameters
-        m_ = cfg.car.m;
-        Iz_ = cfg.car.I;
-        lf_ = cfg.car.Lf;
-        lr_ = cfg.car.Lr;
-        // Cf_ = cfg.car.Cf;
-        // Cr_ = cfg.car.Cr;
-
-        Bf = cfg.car.Bf;
-        Br = cfg.car.Br;
-        Cf = cfg.car.Cf;
-        Cr = cfg.car.Cr;
-        Df = cfg.car.Df;
-        Dr = cfg.car.Dr;
 
         // Initialize mpc matrices
         x0.resize(n_states_);
@@ -436,6 +415,10 @@ class MPC {
         if (cfg.mpc.save_debug){
             appendSingleRowToCSV(x_ref, "x_ref");
         }
+
+        if(cfg.mpc.save_debug){
+            appendSingleRowToCSV(vx, "vx");
+        }
         
         // Print the first 10 values of x_ref
         if (verbose_) std::cout << "First 10 values of x_ref: \n" << x_ref.block(0, 0, 10, 1).transpose() << std::endl;
@@ -553,9 +536,14 @@ class MPC {
             x_prev(i * n_states_ + 4) = prev_delta[i];      // Steering
             x_prev(i * n_states_ + 5) = delta_dot_filtered; // Filtered steering dot
         }
+        if(cfg.mpc.save_debug){
+            appendSingleRowToCSV(x_prev, "x_prev");
+        }
 
-        Cf_ = Df * Cf * Bf;
-        Cr_ = Dr * Cr * Br;
+        // Construct u_prev
+        if(cfg.mpc.save_debug){
+            appendSingleRowToCSV(prev_delta, "u_prev");
+        }
 
         // Contruct n_horizon_ A, B, C, D matrices
         for (size_t i = 0; i < n_horizon_; ++i){

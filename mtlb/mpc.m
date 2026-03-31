@@ -38,8 +38,8 @@ for i = 1:n_horizon
     vxi = vx(i);
     
     % Select model for MPC
-    %[Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
-    [Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi);
+    [Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
+    % [Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi);
 
     % Diference between linear models
     % [A_lin, B_lin, C_lin] = ltv_tv_matrix(xi, x_ref(from_x:to_x), vxi);
@@ -106,34 +106,26 @@ for i = 1:n_horizon
     W(rows,1) = wk;
 end
 
-% Scales for normalization
-scale_y   = 0.3;   % m
-scale_vy  = 0.1;   % m/s
-scale_psi = 0.05;  % rad
-scale_r   = 0.5;   % rad/s
-scale_st  = 0.2;   % rad
-scale_mz  = 1000;  % Nm
-
 % Initialize Q matrix
 Q = diag([
-    params.q_y/scale_y^2
-    params.q_vy/scale_vy^2
-    params.q_psi/scale_psi^2
-    params.q_r/scale_r^2
+    params.q_y/params.scale_y^2
+    params.q_vy/params.scale_vy^2
+    params.q_psi/params.scale_psi^2
+    params.q_r/params.scale_r^2
 ]);
 
 % Initialize P matrix
 P = diag([
-    params.p_y/scale_y^2
-    params.p_vy/scale_vy^2
-    params.p_psi/scale_psi^2
-    params.p_r/scale_r^2
+    params.p_y/params.scale_y^2
+    params.p_vy/params.scale_vy^2
+    params.p_psi/params.scale_psi^2
+    params.p_r/params.scale_r^2
 ]);
 
 % Initialize R matrix
 R = diag([
-    params.r_st/scale_st^2
-    params.r_mz/scale_mz^2
+    params.r_st/params.scale_st^2
+    params.r_mz/params.scale_mz^2
 ]);
 
 % Create Q_ matrix
