@@ -15,7 +15,9 @@ data_paths = {"/home/andreu/bcnemotorsport/data/simu/acceleration_3", [], [];
               % "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG", [], [];
               "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSI", [], [];
               "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSS", [], [];
-              "/home/andreu/bcnemotorsport/data/simu/teleop", [], [];};
+              "/home/andreu/bcnemotorsport/data/simu/teleop", [], [];
+              };
+
 keep_factor = 5; % Keep one of every - samples
 validation_fraction = 0.2; % Define the fraction of data for validation
 seed = 2;
@@ -27,8 +29,10 @@ in.vx = [];
 in.st = [];
 in.mz = [];
 
+Ts = 0.02; % Sampling time for the models [s]
+
 for i = 1:size(data_paths,1)
-    data = read_ros2bag(data_paths{i,1});
+    data = read_ros2bag(data_paths{i,1}, Ts);
 
     ini = data_paths{i,2};
     if isempty(ini)
@@ -111,7 +115,7 @@ opt.InitialFIS = direct_anfis.vy.init_fis;
 opt.ValidationData = [Xn_val Y_val(:,1)];
 
 opt.EpochNumber = 200;
-opt.InitialStepSize = 0.13; %0.01
+opt.InitialStepSize = 0.15; %0.01
 opt.StepSizeDecreaseRate = 0.9; %0.9
 opt.StepSizeIncreaseRate = 1.1; %1.1
 
@@ -126,7 +130,12 @@ opt.DisplayFinalResults = true;
 save('models/direct_anfis/direct_anfis.mat','direct_anfis')
 
 % Training log:    
-% - SC: Clusters:0.35, epoch:200, init:0.13, dec:0.9, inc:1.1 -> 0.00495992, 6 rules, 55% RMSE inicial
+% - SC: Clusters:0.50, epoch:200, init:0.01, dec:0.9, inc:1.1 -> 0.0162133, 4 rules, 67% RMSE inicial
+% - SC: Clusters:0.50, epoch:200, init:0.10, dec:0.9, inc:1.1 -> 0.0157829, 4 rules, 66% RMSE inicial
+% - SC: Clusters:0.35, epoch:200, init:0.10, dec:0.9, inc:1.1 -> 0.014773 , 7 rules, 62% RMSE inicial
+% - SC: Clusters:0.35, epoch:300, init:0.10, dec:0.9, inc:1.1 -> 0.0145514, 7 rules, 60% RMSE inicial
+% - SC: Clusters:0.35, epoch:200, init:0.15, dec:0.9, inc:1.1 -> 0.0146064, 7 rules, 58% RMSE inicial *
+% - SC: Clusters:0.40, epoch:200, init:0.15, dec:0.9, inc:1.1 -> 0.0148359, 6 rules, 58% RMSE inicial
 
 
 %% R model
@@ -138,7 +147,7 @@ opt = genfisOptions("SubtractiveClustering");
     % opt.InputMembershipFunctionType = "gaussmf"; % gbellmf gaussmf trimf trapmf dsigmf psigmf pimf
 
     % SubtractiveClustering: 
-    opt.ClusterInfluenceRange = 0.35; %0.5
+    opt.ClusterInfluenceRange = 0.5; %0.5
 
 
 direct_anfis.r.init_fis = genfis(Xn_train, Y_train(:,2), opt);
@@ -149,7 +158,7 @@ opt.InitialFIS = direct_anfis.r.init_fis;
 opt.ValidationData = [Xn_val Y_val(:,2)];
 
 opt.EpochNumber = 200;
-opt.InitialStepSize = 0.13; %0.01
+opt.InitialStepSize = 0.10; %0.01
 opt.StepSizeDecreaseRate = 0.9; %0.9
 opt.StepSizeIncreaseRate = 1.1; %1.1
 
@@ -164,7 +173,10 @@ opt.DisplayFinalResults = true;
 save('models/direct_anfis/direct_anfis.mat','direct_anfis')
 
 % Training log:    
-% - SC: Clusters:0.35, epoch:200, init:0.13, dec:0.9, inc:1.1 -> 0.00655891, 6 rules, 57% RMSE inicial
+% - SC: Clusters:0.35, epoch:200, init:0.13, dec:0.9, inc:1.1 -> 0.0161662, 7 rules, 72% RMSE inicial
+% - SC: Clusters:0.35, epoch:200, init:0.01, dec:0.9, inc:1.1 -> 0.0165883, 7 rules, 78% RMSE inicial
+% - SC: Clusters:0.50, epoch:200, init:0.01, dec:0.9, inc:1.1 -> 0.0158009, 4 rules, 74% RMSE inicial
+% - SC: Clusters:0.50, epoch:200, init:0.10, dec:0.9, inc:1.1 -> 0.0156756, 4 rules, 74% RMSE inicial *
 
 
 %% Extract and save matrixes
@@ -179,7 +191,7 @@ save('models/direct_anfis/direct_anfis.mat','direct_anfis')
 %% Model insights
 
 % Model to evaluate
-fis = direct_anfis.r.fis;
+fis = direct_anfis.vy.fis;
 
 % Rules info
 fprintf("Number of rules: %d", numel(fis.Rules))

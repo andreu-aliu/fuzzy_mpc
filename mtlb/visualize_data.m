@@ -2,10 +2,10 @@ cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/
 clear all
 %% Setup
 
-data_path = "/home/andreu/bcnemotorsport/data/simu/teleop";
+data_path = "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG";
 
 %% Load data 
-data = read_ros2bag(data_path);
+data = read_ros2bag(data_path, 0.02);
 
 %% Plot data
 t = data.time;

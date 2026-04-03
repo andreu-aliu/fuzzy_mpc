@@ -1,4 +1,4 @@
-function data = read_ros2bag(bagPath)
+function data = read_ros2bag(bagPath, Ts)
 
 % READ_ROS2_CAR_DATA
 % Reads ROS2 bag and returns synchronized timeseries object
@@ -87,7 +87,6 @@ Trl_unique = Trl(idx_tv);
 Trr_unique = Trr(idx_tv);
 
 % RESAMPLING
-Ts = 0.01;  
 t_start = max([t_state(1), t_steer_unique(1), t_tv_unique(1)]);
 t_end   = min([t_state(end), t_steer_unique(end), t_tv_unique(end)]);
 

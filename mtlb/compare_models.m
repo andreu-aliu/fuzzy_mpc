@@ -8,7 +8,7 @@ idx_start = 600;
 horizon  = 1000;
 
 %% LOAD DATA
-data = read_ros2bag(dataFile);
+data = read_ros2bag(dataFile, 0.02);
 
 %% TAKE A WINDOW OF DATA
 idx_end = min(idx_start + horizon - 1, height(data.vx));

@@ -8,7 +8,7 @@ idx_start = 3000;
 n  = 300;
 
 %% LOAD DATA
-data = read_ros2bag(dataFile);
+data = read_ros2bag(dataFile, 0.02);
 
 %% TAKE A WINDOW OF DATA
 idx_end = min(idx_start + n - 1, height(data.vx));
@@ -136,17 +136,17 @@ params.scale_mz  = 1000;  % Nm
 
 % Weights
 params.q_y  = 800;
-params.q_vy = 10;
-params.q_psi= 20;
-params.q_r  = 40;
+params.q_vy = 0;
+params.q_psi= 0;
+params.q_r  = 0;
 
 params.p_y  = 8000;
-params.p_vy = 10;
-params.p_psi= 100;
-params.p_r  = 10;
+params.p_vy = 0;
+params.p_psi= 0;
+params.p_r  = 0;
 
-params.r_st = 50;
-params.r_mz = 50; 
+params.r_st = 0;
+params.r_mz = 0; 
 
 % Bounds
 params.min_st = -0.436;
@@ -155,13 +155,13 @@ params.min_mz = -0;
 params.max_mz = 0;
 
 % Debug options
-debug_opts.enabled = false;
+debug_opts.enabled = true;
 debug_opts.step    = [];     % [] = all, or e.g. 20
 debug_opts.pause   = false;  % true = step-by-step
 debug_opts.figure_id = 99;
 
 % Compare options
-comp_opts.enabled = true;
+comp_opts.enabled = false;
 comp_opts.step    = [];     % [] = all, or e.g. 20
 comp_opts.pause   = false;  % true = step-by-step
 comp_opts.figure_id = 98;
@@ -221,8 +221,8 @@ for k = 1:n-1
     U{k+1} = u;
 
     % Simulate GLOBAL dynamics
-    X{k+1} = sim_anfis_direct(Xg', u', traj.vx(idx), dt)';
-    % X{k+1} = sim_bicycleDynamic_linear(Xg', u', traj.vx(idx), dt)';
+    % X{k+1} = sim_anfis_direct(Xg', u', vx_ref(1), dt)';
+    X{k+1} = sim_bicycleDynamic_linear(Xg', u', vx_ref(1), dt)';
     % X{k+1} = sim_ltv(Xg', u', vx_ref(1), dt);
 
     % Compare last seen states with mpc predicted. Model error
@@ -313,8 +313,7 @@ ylabel('M_z [Nm]');
 
 xlabel('Time [s]');
 title('Control Inputs');
-
-legend('Model error','Location','best');
+legend('Steering','Yaw moment','Location','best');
 
 % ===== BOTTOM: MODEL ERROR =====
 ax3 = nexttile; hold on; grid on;
@@ -324,8 +323,7 @@ ylabel('Vectorn norm difference');
 
 xlabel('Time [s]');
 title('Model Error');
-
-legend('Steering','Yaw moment','Location','best');
+legend('Model error','Location','best');
 
 linkaxes([ax2 ax3],'x')
 
