@@ -1,7 +1,7 @@
 function x_next = sim_ltv(X, U, vx_next, dt)
 % LTV-based simulator consistent with MPC model
 %
-% X = [x, y, psi, vx, vy, r]
+% X = [x, y, psi, vx, vy, r, delta, delta_dot]
 % U = [delta, M_TV]
 
     % Extract states
@@ -11,14 +11,16 @@ function x_next = sim_ltv(X, U, vx_next, dt)
     vx  = X(4);
     vy  = X(5);
     r   = X(6);
+    delta = X(7);
+    delta_dot = X(8);
 
     % Inputs
     U = U(:);
-    delta = U(1);
+    delta_cmd = U(1);
     mz    = U(2);
 
     % Build local state
-    x_local = [y; vy; psi; r];
+    x_local = [y; vy; psi; r; delta; delta_dot];
     x_local = x_local(:);
 
     % Get discrete LTV model at this operating point
@@ -32,6 +34,8 @@ function x_next = sim_ltv(X, U, vx_next, dt)
     vy_next  = x_local_next(2);
     psi_next = x_local_next(3);
     r_next   = x_local_next(4);
+    delta_next = x_local_next(5);
+    delta_dot_next = x_local_next(6);
 
     % Global position update (same as your nonlinear sim)
     x_dot = vx*cos(psi) - vy*sin(psi);
@@ -47,6 +51,8 @@ function x_next = sim_ltv(X, U, vx_next, dt)
         psi_next;
         vx_next;
         vy_next;
-        r_next
+        r_next;
+        delta_next;
+        delta_dot_next;
     ];
 end

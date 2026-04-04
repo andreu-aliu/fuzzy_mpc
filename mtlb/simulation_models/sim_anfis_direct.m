@@ -1,12 +1,13 @@
 function x_next = sim_anfis_direct(X, U, vx_next, dt)
 % Using ANFIS direct models
-% X = [x, y, psi, vx, vy, r]
+% X = [x, y, psi, vx, vy, r, delta, delta_dot]
 % U = [delta, M_TV]
 % dt: timestep [s]
 
 % State and Inputs
 C = num2cell(X);
-[x, y, psi, vx, vy, r] = deal(C{:});
+[x, y, psi, vx, vy, r, delta, vel_delta] = deal(C{:});
+delta = min(max(delta, -0.45), 0.45);
 C = num2cell(U);
 [delta, mz] = deal(C{:});
 
@@ -42,8 +43,12 @@ x_dot   = vx*cos(psi) - vy*sin(psi);
 y_dot   = vx*sin(psi) + vy*cos(psi);
 psi_dot = r;
 
+% Steering dynamics
+delta_dot = vel_delta;
+delta_dot_dot = -(wn*wn) * delta -2*(wn*zeta) * delta_dot + wn*wn*delta_cmd;
+
 % Integration (Euler)
-Xdot = [x_dot, y_dot, psi_dot, 0, vy_dot, r_dot];
+Xdot = [x_dot, y_dot, psi_dot, 0 , vy_dot, r_dot, delta_dot, delta_dot_dot];
 x_next = X + Xdot*dt;
 x_next(4) = vx_next;
 

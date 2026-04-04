@@ -122,7 +122,7 @@ traj.vx  = vx_u;
 %% MPC PARAMETERS & OPTIONS
 
 Np = 60;
-nx = 4;
+nx = 6;
 nu = 2;
 dt = 0.01;
 
@@ -132,18 +132,23 @@ params.scale_vy  = 0.1;   % m/s
 params.scale_psi = 0.05;  % rad
 params.scale_r   = 0.5;   % rad/s
 params.scale_st  = 0.2;   % rad
+params.scale_dst = 1.0;   % rad/s
 params.scale_mz  = 1000;  % Nm
 
 % Weights
-params.q_y  = 800;
+params.q_y  = 10;
 params.q_vy = 0;
-params.q_psi= 0;
+params.q_psi= 1;
 params.q_r  = 0;
+params.q_st = 0;
+params.q_dst= 0;
 
-params.p_y  = 8000;
+params.p_y  = 60;
 params.p_vy = 0;
 params.p_psi= 0;
 params.p_r  = 0;
+params.p_st = 0;
+params.p_dst= 0;
 
 params.r_st = 0;
 params.r_mz = 0; 
@@ -155,7 +160,7 @@ params.min_mz = -0;
 params.max_mz = 0;
 
 % Debug options
-debug_opts.enabled = true;
+debug_opts.enabled = false;
 debug_opts.step    = [];     % [] = all, or e.g. 20
 debug_opts.pause   = false;  % true = step-by-step
 debug_opts.figure_id = 99;
@@ -166,9 +171,9 @@ comp_opts.step    = [];     % [] = all, or e.g. 20
 comp_opts.pause   = false;  % true = step-by-step
 comp_opts.figure_id = 98;
 
-%% SIMULATE 
+%% SIMULATE  
 
-% Global state history: [x y psi vx vy r]
+% Global state history: [x y psi vx vy r delta delata_dot]
 X = cell(n,1);
 U = cell(n,1);
 model_error = NaN(1,n);
@@ -179,12 +184,14 @@ X{1} = [meas.x(1);
         meas.psi(1);
         meas.vx(1);
         meas.vy(1);
-        meas.r(1)];
+        meas.r(1);
+        0;
+        0];
 
 U{1} = [in.st(1); in.mz(1)];
 
 % Warm start
-x_pred = repmat([0 meas.vy(1) 0 meas.r(1)], Np, 1); % local state
+x_pred = repmat([0 meas.vy(1) 0 meas.r(1) 0 0], Np, 1); % local state
 u_pred = zeros(Np, 2);
 
 for k = 1:n-1
@@ -222,8 +229,8 @@ for k = 1:n-1
 
     % Simulate GLOBAL dynamics
     % X{k+1} = sim_anfis_direct(Xg', u', vx_ref(1), dt)';
-    X{k+1} = sim_bicycleDynamic_linear(Xg', u', vx_ref(1), dt)';
-    % X{k+1} = sim_ltv(Xg', u', vx_ref(1), dt);
+    % X{k+1} = sim_bicycleDynamic_linear(Xg', u', vx_ref(1), dt)';
+    X{k+1} = sim_ltv(Xg', u', vx_ref(1), dt);
 
     % Compare last seen states with mpc predicted. Model error
     if k > Np
@@ -231,7 +238,7 @@ for k = 1:n-1
         U_compare = U(k-Np+1:k);
         
         % Convert to local
-        x_comp = NaN(Np,4);
+        x_comp = NaN(Np,6);
         u_comp = NaN(Np,2);
         vx_comp = NaN(Np,1);
         x_0_comp = global_to_local_state(X_compare{1}, X_compare{1});
@@ -274,6 +281,7 @@ U_mat  = cell2mat(U')';   % N x 2
 % Extract global states
 x_sim = Xg_mat(:,1);
 y_sim = Xg_mat(:,2);
+delta_sim = Xg_mat(:,7);
 
 st_sim = U_mat(:,1);
 mz_sim = U_mat(:,2);
@@ -305,6 +313,7 @@ ax2 = nexttile; hold on; grid on;
 
 yyaxis left
 plot(t_u, st_sim, 'LineWidth', 1.5);
+plot(t_u, delta_sim, 'LineWidth', 1.5);
 ylabel('\delta [rad]');
 
 yyaxis right
@@ -313,7 +322,7 @@ ylabel('M_z [Nm]');
 
 xlabel('Time [s]');
 title('Control Inputs');
-legend('Steering','Yaw moment','Location','best');
+legend('Steering command','Actual steering','Yaw moment','Location','best');
 
 % ===== BOTTOM: MODEL ERROR =====
 ax3 = nexttile; hold on; grid on;
@@ -358,7 +367,7 @@ end
 
 function X_ref = build_reference_global(traj, Xg, dt, Np)
 % Build reference state list in global coordinates
-% Global state: [x y psi vx vy r]
+% Global state: [x y psi vx vy r delta delta_dot]
 
     X_ref = cell(Np,1);
     
@@ -384,14 +393,14 @@ function X_ref = build_reference_global(traj, Xg, dt, Np)
         s_i = s_i + vx_i * dt;
 
         % Build global reference states
-        X_ref{i} = [x_t; y_t; psi_t; vx_i; 0; 0];
+        X_ref{i} = [x_t; y_t; psi_t; vx_i; 0; 0; 0; 0];
     end
 end
 
 function [x_local, vx] = global_to_local_state(X_global, X_ref)
 % Convert global state into local frame defined by X_ref
-% Global state: [x y psi vx vy r]
-% Local state:  [y vy psi r]
+% Global state: [x y psi vx vy r delta delta_dot]
+% Local state:  [y vy psi r delta delta_dot]
 
     % Extract global state
     x = X_global(1);
@@ -400,6 +409,8 @@ function [x_local, vx] = global_to_local_state(X_global, X_ref)
     vx = X_global(4);
     vy = X_global(5);
     r = X_global(6);
+    delta = X_global(7);
+    delta_dot = X_global(8);
 
     % Extract reference state
     x_ref = X_ref(1);
@@ -418,11 +429,13 @@ function [x_local, vx] = global_to_local_state(X_global, X_ref)
     psi_rel = wrapToPi(psi - psi_ref);
 
     % Assemble output
-    x_local = zeros(4,1);
+    x_local = zeros(6,1);
     x_local(1) = y_local_pos;
     x_local(2) = vy;
     x_local(3) = psi_rel;
     x_local(4) = r;
+    x_local(5) = delta;
+    x_local(6) = delta_dot;
 
 end
 

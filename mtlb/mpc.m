@@ -15,7 +15,7 @@ function [x_pred, u_opt, x_comp]= mpc(x_0, x_ref, x_prev, u_prev, vx, params)
 
 % Parameters of the MPC
 n_horizon = 60;
-n_states = 4;
+n_states = 6;
 n_inputs = 2;
 
 % Discrete model matrices for each step
@@ -38,8 +38,9 @@ for i = 1:n_horizon
     vxi = vx(i);
     
     % Select model for MPC
-    [Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
-    % [Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi);
+    %[Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
+    %[Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi);
+    [Ad{i}, Bd{i}, Cd{i}] = ltv_matrix(xi, ui, vxi);
 
     % Diference between linear models
     % [A_lin, B_lin, C_lin] = ltv_tv_matrix(xi, x_ref(from_x:to_x), vxi);
@@ -112,6 +113,8 @@ Q = diag([
     params.q_vy/params.scale_vy^2
     params.q_psi/params.scale_psi^2
     params.q_r/params.scale_r^2
+    params.q_st/params.scale_st^2;
+    params.q_dst/params.scale_dst^2;
 ]);
 
 % Initialize P matrix
@@ -120,6 +123,8 @@ P = diag([
     params.p_vy/params.scale_vy^2
     params.p_psi/params.scale_psi^2
     params.p_r/params.scale_r^2
+    params.p_st/params.scale_st^2
+    params.p_dst/params.scale_dst^2;
 ]);
 
 % Initialize R matrix

@@ -1,16 +1,16 @@
 % The function returns discrete next-state matrices for a given predicted state/input
 % x_{k+1} = Ad x_k + Bd u_k + Cd
 %
-% x: [y vy psi r]
+% x: [y vy psi r delta delta_dot]
 % u: [st mz]
 
 function [Ad, Bd, Cd] = ltv_tv_matrix(X_pred, U_pred, vx)
 
-dt = 0.01;
+dt = 0.02;
 
 % Predicted operating point
 psi   = X_pred(3);
-delta = U_pred(1);
+delta = X_pred(5);
 
 % Car parameters
 m  = 220;
@@ -19,6 +19,8 @@ lf = 0.765;
 lr = 0.765;
 Cf = 1.2705 * 10.5507 * 1104.0;
 Cr = 1.2705 * 10.5507 * 1281.5;
+wn = 16.0;
+zeta = 0.5;
 
 % Avoid division by zero / bad conditioning at very low speed
 vx_eff = max(vx, 0.5);
@@ -26,9 +28,9 @@ vx_eff = max(vx, 0.5);
 % Continuous-time affine model:
 % xdot = Ac*x + Bc*u + Cc
 
-Ac = zeros(4,4);
-Bc = zeros(4,2);
-Cc = zeros(4,1);
+Ac = zeros(6,6);
+Bc = zeros(6,2);
+Cc = zeros(6,1);
 
 % y kinematics, same style as direct_anfis_matrix
 % y_dot = vy*cos(psi) + vx*sin(psi)
@@ -50,18 +52,24 @@ Ac(4,4) = -(lf^2*Cf*cos(delta) + lr^2*Cr) / (Iz * vx_eff);
 Bc(4,1) =  lf*Cf*cos(delta) / Iz;
 Bc(4,2) =  1 / Iz;
 
+% Steering dynamics
+Ac(5,6) = 1;
+Ac(6,5) = -(wn * wn);
+Ac(6,6) = -2*(wn*zeta);
+Bc(6,1) = wn*wn;
+
 % Exact discretization of affine system
 % [x_{k+1}]   [Ad Bd Cd] [x_k]
 % [   1    ] = [ 0  1  0] [u_k]
 %                         [ 1 ]
 M = [Ac, Bc, Cc;
-     zeros(2,4), zeros(2,2), zeros(2,1);
-     zeros(1,4), zeros(1,2), 0];
+     zeros(2,6), zeros(2,2), zeros(2,1);
+     zeros(1,6), zeros(1,2), 0];
 
 expM = expm(M * dt);
 
-Ad = expM(1:4, 1:4);
-Bd = expM(1:4, 5:6);
-Cd = expM(1:4, 7);
+Ad = expM(1:6, 1:6);
+Bd = expM(1:6, 7:8);
+Cd = expM(1:6, 9);
 
 end
