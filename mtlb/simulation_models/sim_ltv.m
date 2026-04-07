@@ -34,7 +34,7 @@ function x_next = sim_ltv(X, U, vx_next, dt)
     vy_next  = x_local_next(2);
     psi_next = x_local_next(3);
     r_next   = x_local_next(4);
-    delta_next = x_local_next(5);
+    delta_next = max(min(x_local_next(5),0.45), -0.45);
     delta_dot_next = x_local_next(6);
 
     % Global position update (same as your nonlinear sim)

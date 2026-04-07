@@ -38,17 +38,10 @@ for i = 1:n_horizon
     vxi = vx(i);
     
     % Select model for MPC
-    [Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
-    %[Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi);
-    %[Ad{i}, Bd{i}, Cd{i}] = ltv_matrix(xi, ui, vxi);
+    [Ad{i}, Bd{i}, Cd{i}] = anfis_delta_matrix(xi, ui, vxi); anfis = true;
+    % [Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi); anfis = false;
+    % [Ad{i}, Bd{i}, Cd{i}] = ltv_matrix(xi, ui, vxi); anfis = false;
 
-    % Diference between linear models
-    % [A_lin, B_lin, C_lin] = ltv_tv_matrix(xi, x_ref(from_x:to_x), vxi);
-    % fprintf('step %d\n', i);
-    % fprintf('||A_anfis - A_lin|| = %.3e\n', norm(Ad{i} - A_lin));
-    % fprintf('||B_anfis - B_lin|| = %.3e\n', norm(Bd{i} - B_lin));
-    % fprintf('||C_anfis - C_lin|| = %.3e\n', norm(Cd{i} - C_lin));
-    
     % Check inputs and matrixes
     assert(all(isfinite(xi)), 'x_prev invalid at step %d', i);
     assert(all(isfinite(ui)), 'u_prev invalid at step %d', i);
@@ -196,6 +189,23 @@ x_pred = S * u_opt + T * x_0 + W;
 
 % Prediction to compare model
 x_comp = S * u_prev + T * x_0 + W;
+
+% Limit prediction with training limits (anfis)
+if(anfis)
+    persistent anfis_delta;
+    if(isempty(anfis_delta))
+        S = load('anfis_delta.mat', 'anfis_delta');
+        anfis_delta = S.anfis_delta;
+    end
+    max_vy = anfis_delta.vy.max;
+    min_vy = anfis_delta.vy.min;
+    max_r  = anfis_delta.r.max;
+    min_r  = anfis_delta.r.min;
+    for i = 1:n_horizon
+        x_pred(2) = max(min(x_pred(2),max_vy),min_vy);
+        x_pred(4) = max(min(x_pred(4),max_r),min_r);
+    end
+end
 
 
 end

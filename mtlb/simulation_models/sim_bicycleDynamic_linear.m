@@ -53,4 +53,5 @@ delta_dot_dot = -(wn*wn) * delta -2*(wn*zeta) * delta_dot + wn*wn*delta_cmd;
 Xdot = [x_dot, y_dot, psi_dot, 0 , vy_dot, r_dot, delta_dot, delta_dot_dot];
 x_next = X + Xdot*dt;
 x_next(4) = vx_next;
+x_next(7) = min(max(x_next(7), -0.45), 0.45);
 end

@@ -1,6 +1,5 @@
 % Train ANFIS model to replicat system dynamics
-% state:  [y vy psi r] normalized
-% inputs: [delta mz]
+% inputs: [vy r vx delta mz] normalized
 % output: [delta_vy delta_r] 
 cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'))
 clear all
@@ -61,7 +60,8 @@ for i = 1:size(data_paths,1)
     in.vx = [in.vx; data.vx(idx)];
     in.st = [in.st; data.st(idx)];
     in.mz = [in.mz; data.mz(idx)];
-
+    
+    % Predicted is delta vy,r
     out.vy = [out.vy; data.vy(idx_next)-data.vy(idx)];
     out.r  = [out.r ; data.r(idx_next)-data.r(idx)];
 
@@ -72,10 +72,16 @@ end
 X = [in.vy in.r in.vx in.st in.mz];
 Y = [out.vy out.r];
 [Xn, mu, sigma] = zscore(X);
-direct_anfis.norm.mu = mu;
-direct_anfis.norm.sigma = sigma;
-direct_anfis.norm.x_min = min(X,[],1);
-direct_anfis.norm.x_max = max(X,[],1);
+anfis_delta.norm.mu = mu;
+anfis_delta.norm.sigma = sigma;
+anfis_delta.norm.x_min = min(X,[],1);
+anfis_delta.norm.x_max = max(X,[],1);
+
+% Save max/min of the predictions
+anfis_delta.vy.min = min(out.vy);
+anfis_delta.vy.max = max(out.vy);
+anfis_delta.r.min = min(out.r);
+anfis_delta.r.max = max(out.r);
 
 % Split dataset for validation
 N = size(in.vx,1);
@@ -93,10 +99,10 @@ Xn_train = Xn(train_idx, :);
 Y_train  = Y(train_idx, :);
 
 fprintf('Validation: %d points \nTraining: %d points\n', N_val, N-N_val);
-save('models/direct_anfis/direct_anfis.mat','direct_anfis')
+save('models/anfis_delta/anfis_delta.mat','anfis_delta')
 
 %% VY model
-load direct_anfis.mat direct_anfis
+load anfis_delta.mat anfis_delta
 % Define model
 opt = genfisOptions("SubtractiveClustering");
     % GridPartition:
@@ -107,11 +113,11 @@ opt = genfisOptions("SubtractiveClustering");
     opt.ClusterInfluenceRange = 0.35; %0.5
 
 
-direct_anfis.vy.init_fis = genfis(Xn_train, Y_train(:,1), opt);
+anfis_delta.vy.init_fis = genfis(Xn_train, Y_train(:,1), opt);
 
 % Training options
 opt = anfisOptions;
-opt.InitialFIS = direct_anfis.vy.init_fis;
+opt.InitialFIS = anfis_delta.vy.init_fis;
 opt.ValidationData = [Xn_val Y_val(:,1)];
 
 opt.EpochNumber = 200;
@@ -124,10 +130,10 @@ opt.DisplayStepSize    = true;
 opt.DisplayANFISInformation = true;
 opt.DisplayFinalResults = true;
 
-[direct_anfis.vy.fis, trainError, ~, fis_val, valError] = anfis([Xn_train Y_train(:,1)], opt);
+[anfis_delta.vy.fis, trainError, ~, fis_val, valError] = anfis([Xn_train Y_train(:,1)], opt);
 
 % Save model
-save('models/direct_anfis/direct_anfis.mat','direct_anfis')
+save('models/anfis_delta/anfis_delta.mat','anfis_delta')
 
 % Training log:    
 % - SC: Clusters:0.50, epoch:200, init:0.01, dec:0.9, inc:1.1 -> 0.0162133, 4 rules, 67% RMSE inicial
@@ -139,7 +145,7 @@ save('models/direct_anfis/direct_anfis.mat','direct_anfis')
 
 
 %% R model
-load direct_anfis.mat direct_anfis
+load anfis_delta.mat anfis_delta
 % Define model
 opt = genfisOptions("SubtractiveClustering");
     % GridPartition:
@@ -150,11 +156,11 @@ opt = genfisOptions("SubtractiveClustering");
     opt.ClusterInfluenceRange = 0.5; %0.5
 
 
-direct_anfis.r.init_fis = genfis(Xn_train, Y_train(:,2), opt);
+anfis_delta.r.init_fis = genfis(Xn_train, Y_train(:,2), opt);
 
 % Training options
 opt = anfisOptions;
-opt.InitialFIS = direct_anfis.r.init_fis;
+opt.InitialFIS = anfis_delta.r.init_fis;
 opt.ValidationData = [Xn_val Y_val(:,2)];
 
 opt.EpochNumber = 200;
@@ -167,10 +173,10 @@ opt.DisplayStepSize    = true;
 opt.DisplayANFISInformation = true;
 opt.DisplayFinalResults = true;
 
-[direct_anfis.r.fis, trainError, ~, fis_val, valError] = anfis([Xn_train Y_train(:,2)], opt);
+[anfis_delta.r.fis, trainError, ~, fis_val, valError] = anfis([Xn_train Y_train(:,2)], opt);
 
 % Save model
-save('models/direct_anfis/direct_anfis.mat','direct_anfis')
+save('models/anfis_delta/anfis_delta.mat','anfis_delta')
 
 % Training log:    
 % - SC: Clusters:0.35, epoch:200, init:0.13, dec:0.9, inc:1.1 -> 0.0161662, 7 rules, 72% RMSE inicial
@@ -181,17 +187,17 @@ save('models/direct_anfis/direct_anfis.mat','direct_anfis')
 
 %% Extract and save matrixes
 
-load direct_anfis.mat direct_anfis
+load anfis_delta.mat anfis_delta
 
-direct_anfis.vy.mat = extract_fis(direct_anfis.vy.fis);
-direct_anfis.r.mat = extract_fis(direct_anfis.r.fis);
+anfis_delta.vy.mat = extract_fis(anfis_delta.vy.fis);
+anfis_delta.r.mat = extract_fis(anfis_delta.r.fis);
 
-save('models/direct_anfis/direct_anfis.mat','direct_anfis')
+save('models/anfis_delta/anfis_delta.mat','anfis_delta')
 
 %% Model insights
 
 % Model to evaluate
-fis = direct_anfis.vy.fis;
+fis = anfis_delta.vy.fis;
 
 % Rules info
 fprintf("Number of rules: %d", numel(fis.Rules))
@@ -199,19 +205,19 @@ showrule(fis)
 
 % Membership functions 
 figure(1);
-plotmf(fis,'input',1); title('vx membership'); hold on;
+plotmf(fis,'input',1); title('vy membership'); hold on;
 histogram(Xn(:,1), 'Normalization', 'pdf', 'FaceAlpha',0.3,'EdgeColor','none'); hold off;
 figure(2);
-plotmf(fis,'input',2); title('vy membership'); hold on;
+plotmf(fis,'input',2); title('r membership'); hold on;
 histogram(Xn(:,2), 'Normalization', 'pdf', 'FaceAlpha',0.3,'EdgeColor','none'); hold off;
 figure(3);
-plotmf(fis,'input',3); title('r membership'); hold on;
+plotmf(fis,'input',3); title('vx membership'); hold on;
 histogram(Xn(:,3), 'Normalization', 'pdf', 'FaceAlpha',0.3,'EdgeColor','none'); hold off;
 figure(4);
-plotmf(fis,'input',4); title('T membership'); hold on;
+plotmf(fis,'input',4); title('delta membership'); hold on;
 histogram(Xn(:,4), 'Normalization', 'pdf', 'FaceAlpha',0.3,'EdgeColor','none'); hold off;
 figure(5);
-plotmf(fis,'input',5); title('delta membership'); hold on;
+plotmf(fis,'input',5); title('mz membership'); hold on;
 histogram(Xn(:,5), 'Normalization', 'pdf', 'FaceAlpha',0.3,'EdgeColor','none'); hold off;
 
 % Training progression (of last trained fis)
