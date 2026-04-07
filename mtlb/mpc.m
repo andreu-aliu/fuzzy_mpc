@@ -38,9 +38,9 @@ for i = 1:n_horizon
     vxi = vx(i);
     
     % Select model for MPC
-    %[Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
+    [Ad{i}, Bd{i}, Cd{i}] = direct_anfis_matrix(xi, ui, vxi);
     %[Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi);
-    [Ad{i}, Bd{i}, Cd{i}] = ltv_matrix(xi, ui, vxi);
+    %[Ad{i}, Bd{i}, Cd{i}] = ltv_matrix(xi, ui, vxi);
 
     % Diference between linear models
     % [A_lin, B_lin, C_lin] = ltv_tv_matrix(xi, x_ref(from_x:to_x), vxi);

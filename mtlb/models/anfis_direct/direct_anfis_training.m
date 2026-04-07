@@ -1,7 +1,7 @@
 % Train ANFIS model to replicat system dynamics
 % state:  [y vy psi r] normalized
 % inputs: [delta mz]
-% output: [vy_dot r_dot] 
+% output: [delta_vy delta_r] 
 cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'))
 clear all
 

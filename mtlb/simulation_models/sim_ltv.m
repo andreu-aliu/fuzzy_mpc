@@ -24,7 +24,7 @@ function x_next = sim_ltv(X, U, vx_next, dt)
     x_local = x_local(:);
 
     % Get discrete LTV model at this operating point
-    [Ad, Bd, Cd] = ltv_tv_matrix(x_local, U, vx);
+    [Ad, Bd, Cd] = ltv_matrix(x_local, U, vx);
 
     % Propagate local dynamics
     x_local_next = Ad * x_local + Bd * U + Cd;

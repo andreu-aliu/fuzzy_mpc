@@ -136,16 +136,16 @@ params.scale_dst = 1.0;   % rad/s
 params.scale_mz  = 1000;  % Nm
 
 % Weights
-params.q_y  = 10;
+params.q_y  = 50;
 params.q_vy = 0;
-params.q_psi= 1;
+params.q_psi= 4;
 params.q_r  = 0;
 params.q_st = 0;
-params.q_dst= 0;
+params.q_dst= 2;
 
-params.p_y  = 60;
+params.p_y  = 500;
 params.p_vy = 0;
-params.p_psi= 0;
+params.p_psi= 5;
 params.p_r  = 0;
 params.p_st = 0;
 params.p_dst= 0;

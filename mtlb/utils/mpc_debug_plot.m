@@ -60,7 +60,9 @@ function mpc_debug_plot(k, x0, x_ref, x_pred, u_pred, params, opts)
         hLines.r_x0   = yline(hAx(4), x0(4),'r:','LineWidth',1.5);
         title(hAx(4),'r');
 
-        hLines.st = plot(hAx(5), t_pred, u_pred(:,1),'LineWidth',1.5);
+        hLines.st = plot(hAx(5), t_pred, u_pred(:,1),'b--','LineWidth',1.5);
+        hLines.delta_ref  = plot(hAx(5), t_pred, x_ref(:,5),'w--','LineWidth',1.5);
+        hLines.delta_pred = plot(hAx(5), t_pred, x_pred(:,5), 'b', 'LineWidth', 1.5)
         yline(hAx(5), params.min_st,'r--');
         yline(hAx(5), params.max_st,'r--');
         title(hAx(5),'\delta');
@@ -94,6 +96,9 @@ function mpc_debug_plot(k, x0, x_ref, x_pred, u_pred, params, opts)
         set(hLines.r_x0,   'Value', x0(4));
 
         set(hLines.st, 'YData', u_pred(:,1));
+        set(hLines.delta_ref,  'YData', x_ref(:,5));
+        set(hLines.delta_pred, 'YData', x_pred(:,5))
+
         set(hLines.mz, 'YData', u_pred(:,2));
 
         sgtitle(sprintf('MPC Debug (k = %d)',k));
