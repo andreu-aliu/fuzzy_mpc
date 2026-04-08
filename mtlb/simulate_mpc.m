@@ -166,7 +166,7 @@ debug_opts.pause   = false ;  % true = step-by-step
 debug_opts.figure_id = 99;
 
 % Compare options
-comp_opts.enabled = true;
+comp_opts.enabled = false;
 comp_opts.step    = [];     % [] = all, or e.g. 20
 comp_opts.pause   = false;  % true = step-by-step
 comp_opts.figure_id = 98;

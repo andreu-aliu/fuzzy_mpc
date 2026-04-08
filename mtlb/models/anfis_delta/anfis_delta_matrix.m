@@ -1,8 +1,8 @@
+function [A, B, C] = anfis_delta_matrix(X_pred, U_pred, vx)
 % The funciton returns the discrete state matrices for a given state (predicted + vx)
-% x = A x + B u + C
+% x_{k+1} = A x_k + B u_k + C
 % x: [y vy psi r delta delta_dot]
 % u: [st mz]
-function [A, B, C] = anfis_delta_matrix(X_pred, U_pred, vx)
 
 % Load ANFIS model
 persistent anfis_delta;
@@ -59,8 +59,7 @@ Xin_n = (X_in - mu) ./ sg;
 A(1,1) = 1;
 A(1,2) = cos(psi) * dt;
 A(1,3) = (vx * cos(psi) - vy * sin(psi)) * dt;
-%C(1) = vx*sin(psi) * dt; 
-C(1) = dt*(vx*sin(psi)+vy*cos(psi) - A(1,2)*vy - A(1,3)*psi);
+C(1) = dt*(vx*sin(psi)+vy*cos(psi) - A(1,2)*vy - A(1,3)*psi); %vx*sin(psi) * dt; 
 
 % Vy dynamics
 [A_vy_n, b_vy_n, ~] = evalfis_mat(anfis_delta.vy.mat, Xin_n);

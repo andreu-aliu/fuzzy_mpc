@@ -73,8 +73,8 @@ delta_r  = data.r(1:end-1) - data.r(2:end);
 delta_vy = data.vy(1:end-1) - data.vy(2:end);
 
 % Filter with Savitzky-Golay
-r_filtered = sgolayfilt_custom(data.r, 3, 21);
-vy_filtered = sgolayfilt_custom(data.vy, 3, 21);
+r_filtered = sgolayfilt_custom(data.r, 3, 11);
+vy_filtered = sgolayfilt_custom(data.vy, 3, 11);
 delta_r_filtered = r_filtered(1:end-1) - r_filtered(2:end);
 delta_vy_filtered = vy_filtered(1:end-1) - vy_filtered(2:end);
 
