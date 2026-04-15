@@ -59,7 +59,7 @@ Xin_n = (X_in - mu) ./ sg;
 A(1,1) = 1;
 A(1,2) = cos(psi) * dt;
 A(1,3) = (vx * cos(psi) - vy * sin(psi)) * dt;
-C(1) = dt*(vx*sin(psi)+vy*cos(psi) - A(1,2)*vy - A(1,3)*psi); %vx*sin(psi) * dt; 
+C(1) = dt*(vx*sin(psi)+vy*cos(psi) - A(1,2)*vy - A(1,3)*psi); 
 
 % Vy dynamics
 [A_vy_n, b_vy_n, ~] = evalfis_mat(anfis_delta.vy.mat, Xin_n);

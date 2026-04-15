@@ -11,7 +11,7 @@
 %    u_opt      [2*60,1]: Optimal inputs
 %    x_comp     [4*60,1]: Predicted states for the previous (or compare) inputs
 
-function [x_pred, u_opt, x_comp]= mpc(x_0, x_ref, x_prev, u_prev, vx, params)
+function [x_pred, u_opt, x_comp]= mpc(x_0, x_ref, x_prev, u_prev, vx, u_prev_iter, params)
 
 % Parameters of the MPC
 n_horizon = 60;
@@ -39,9 +39,9 @@ for i = 1:n_horizon
     
     % Select model for MPC
     % [Ad{i}, Bd{i}, Cd{i}] = anfis_residuals_matrix(xi, ui, vxi); anfis = false;
-    % [Ad{i}, Bd{i}, Cd{i}] = anfis_delta_matrix(xi, ui, vxi); anfis = true;
+    [Ad{i}, Bd{i}, Cd{i}] = anfis_delta_matrix(xi, ui, vxi); anfis = true;
     % [Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi); anfis = false;
-    [Ad{i}, Bd{i}, Cd{i}] = ltv_matrix(xi, ui, vxi); anfis = false;
+    % [Ad{i}, Bd{i}, Cd{i}] = ltv_matrix(xi, ui, vxi); anfis = false;
 
     % Check inputs and matrixes
     assert(all(isfinite(xi)), 'x_prev invalid at step %d', i);
@@ -127,17 +127,43 @@ R = diag([
     params.r_mz/params.scale_mz^2
 ]);
 
+% Initialize Rd matrix
+Rd = diag([
+    params.rd_st/params.scale_dst^2
+    params.rd_mz/params.scale_mz^2
+]);
+
 % Create Q_ matrix
 Q_ = blkdiag(kron(eye(n_horizon-1), Q), P);
 
 % Create R_ matrix
 R_ = kron(eye(n_horizon), R);
 
-% Construct Q*S
-QS = Q_ * S;
+% Create Rd_ matrix
+Rd_ = kron(eye(n_horizon), Rd);
+
+% Create D
+D = zeros(n_horizon*n_inputs, n_horizon*n_inputs);
+I = eye(n_inputs);
+for k = 1:n_horizon
+    % Diagonal block
+    rows = (k-1)*n_inputs + (1:n_inputs);
+    cols = (k-1)*n_inputs + (1:n_inputs);
+    D(rows, cols) = I;
+
+    % Subdiagonal block
+    if k > 1
+        cols_prev = (k-2)*n_inputs + (1:n_inputs);
+        D(rows, cols_prev) = -I;
+    end
+end
+
+% Create d
+d = zeros(n_horizon*n_inputs, 1);
+d(1:n_inputs) = -u_prev_iter(1:n_inputs);
 
 % H matrix
-H = 2 * (S' * QS + R_);
+H = 2 * (S' * Q_ * S + R_ + D' * Rd_ * D);
 H = (H + H')/2; % Ensure symetry
 H = H + 1e-8*eye(size(H));
 if any(~isfinite(H(:)))
@@ -145,7 +171,7 @@ if any(~isfinite(H(:)))
 end
 
 % g vector
-g = 2 * S' * Q_ * (T * x_0 + W - x_ref);
+g = 2 * S' * Q_ * (T * x_0 + W - x_ref) + 2 * D' * Rd_ * d;
 if any(~isfinite(g(:)))
     error('g contains NaN or Inf');
 end
@@ -158,7 +184,7 @@ end
 % -------------- Optimization without restrictions ------------
 % % Calculate the result
 % [L, D, P] = ldl(H);
-% 
+
 % % Solve the system H * delta_u_opt = -g
 % rhs = P * (-g);   % permuted right-hand side
 % z   = L \ rhs;    % forward solve
@@ -183,6 +209,7 @@ options = optimoptions('quadprog', 'Display', 'off');
 % Check optimization status
 if exitflag ~= 1
     warning('quadprog did not converge. Exitflag: %d', exitflag);
+    u_opt = u_prev;
 end
 
 % Prediction
@@ -192,19 +219,22 @@ x_pred = S * u_opt + T * x_0 + W;
 x_comp = S * u_prev + T * x_0 + W;
 
 % Limit prediction with training limits (anfis)
-if(anfis)
+if anfis
     persistent anfis_delta;
-    if(isempty(anfis_delta))
-        S = load('anfis_delta.mat', 'anfis_delta');
-        anfis_delta = S.anfis_delta;
+    if isempty(anfis_delta)
+        S_anfis = load('anfis_delta.mat', 'anfis_delta');
+        anfis_delta = S_anfis.anfis_delta;
     end
+
     max_vy = anfis_delta.vy.max;
     min_vy = anfis_delta.vy.min;
     max_r  = anfis_delta.r.max;
     min_r  = anfis_delta.r.min;
+
     for i = 1:n_horizon
-        x_pred(2) = max(min(x_pred(2),max_vy),min_vy);
-        x_pred(4) = max(min(x_pred(4),max_r),min_r);
+        idx = (i-1)*n_states;
+        x_pred(idx+2) = max(min(x_pred(idx+2), max_vy), min_vy);
+        x_pred(idx+4) = max(min(x_pred(idx+4), max_r), min_r);
     end
 end
 

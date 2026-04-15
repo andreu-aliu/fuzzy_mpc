@@ -219,7 +219,7 @@ function states = simulateModel(modelFcn, inputs, init_state)
     N  = length(inputs.t);
     
     % Convert init_state struct vector
-    x = [init_state.y, init_state.vy, init_state.psi, init_state.r]';
+    x = [init_state.y, init_state.vy, init_state.psi, init_state.r, 0, 0]';
     
     states(N,1) = init_state;
     

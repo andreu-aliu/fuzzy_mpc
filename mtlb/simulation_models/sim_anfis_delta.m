@@ -43,6 +43,13 @@ x_dot   = vx*cos(psi) - vy*sin(psi);
 y_dot   = vx*sin(psi) + vy*cos(psi);
 psi_dot = r;
 
+% Linearized y update (same as matrix model)
+Ay_vy  = cos(psi) * dt;
+Ay_psi = (vx * cos(psi) - vy * sin(psi)) * dt;
+Cy     = dt*(vx*sin(psi) + vy*cos(psi) - Ay_vy*vy - Ay_psi*psi);
+
+y_next = y + Ay_vy*vy + Ay_psi*psi + Cy;
+
 % Steering dynamics
 wn = 16.0;
 zeta = 0.5;
@@ -53,6 +60,7 @@ delta_dot_dot = -(wn*wn) * delta -2*(wn*zeta) * delta_dot + wn*wn*delta_cmd;
 % Integration (Euler)
 Xdot = [x_dot, y_dot, psi_dot, 0 , vy_dot, r_dot, delta_dot, delta_dot_dot];
 x_next = X + Xdot*dt;
+% x_next(2) = y_next; % Overwrite with Taylor aproximation of lateral movement
 x_next(4) = vx_next;
 x_next(7) = min(max(x_next(7), -0.45), 0.45);
 

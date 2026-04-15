@@ -5,10 +5,11 @@ dataFile = "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG";
 
 % Simulation window (from data)
 idx_start = 3000;
-n  = 300;
+n  = 200;
 
 %% LOAD DATA
-data = read_ros2bag(dataFile, 0.02);
+% data = read_ros2bag(dataFile, 0.02);
+load FSG.mat
 
 %% TAKE A WINDOW OF DATA
 idx_end = min(idx_start + n - 1, height(data.vx));
@@ -106,6 +107,7 @@ s_uniform = (0:ds:s(end)).';
 x_u = interp1(s, meas.x, s_uniform, 'spline');
 y_u = interp1(s, meas.y, s_uniform, 'spline');
 vx_u = interp1(s, meas.vx, s_uniform, 'spline');
+r_u = interp1(s, meas.r, s_uniform, 'spline');
 
 % Compute heading
 dx_u = gradient(x_u, ds);
@@ -117,6 +119,7 @@ traj.x   = x_u;
 traj.y   = y_u;
 traj.psi = psi_u;
 traj.vx  = vx_u;
+traj.r   = r_u;
 
 
 %% MPC PARAMETERS & OPTIONS
@@ -127,40 +130,43 @@ nu = 2;
 dt = 0.02;
 
 % Scales for normalization
-params.scale_y   = 0.3;   % m
+params.scale_y   = 0.1;   % m
 params.scale_vy  = 0.1;   % m/s
 params.scale_psi = 0.05;  % rad
-params.scale_r   = 0.5;   % rad/s
+params.scale_r   = 0.05;   % rad/s
 params.scale_st  = 0.2;   % rad
-params.scale_dst = 1.0;   % rad/s
+params.scale_dst = 0.001;   % rad/0.02s
 params.scale_mz  = 1000;  % Nm
 
 % Weights
-params.q_y  = 50;
+params.q_y  = 100;
 params.q_vy = 0;
-params.q_psi= 4;
-params.q_r  = 0;
+params.q_psi= 0;
+params.q_r  = 1;
 params.q_st = 0;
-params.q_dst= 2;
+params.q_dst= 0;
 
-params.p_y  = 500;
+params.p_y  = 1000;
 params.p_vy = 0;
-params.p_psi= 5;
+params.p_psi= 0;
 params.p_r  = 0;
 params.p_st = 0;
 params.p_dst= 0;
 
-params.r_st = 3;
+params.r_st = 0;
 params.r_mz = 0; 
 
+params.rd_st = 2;
+params.rd_mz = 0; 
+
 % Bounds
-params.min_st = -0.436;
-params.max_st = 0.436;
+params.min_st = -0.38; % 436
+params.max_st = 0.38;
 params.min_mz = -0;
 params.max_mz = 0;
 
 % Debug options
-debug_opts.enabled = false;
+debug_opts.enabled = true;
 debug_opts.step    = [];     % [] = all, or e.g. 20
 debug_opts.pause   = false ;  % true = step-by-step
 debug_opts.figure_id = 99;
@@ -171,7 +177,7 @@ comp_opts.step    = [];     % [] = all, or e.g. 20
 comp_opts.pause   = false;  % true = step-by-step
 comp_opts.figure_id = 98;
 
-%% SIMULATE  
+%% SIMULATE
 
 % Global state history: [x y psi vx vy r delta delata_dot]
 X = cell(n,1);
@@ -213,7 +219,7 @@ for k = 1:n-1
     x_pred_vec = reshape(x_pred.', [], 1);
     u_pred_vec = reshape(u_pred.', [], 1);
 
-    [x_pred_vec, u_pred_vec, ~] = mpc(x_0, x_ref_vec, x_pred_vec, u_pred_vec, vx_ref, params);
+    [x_pred_vec, u_pred_vec, ~] = mpc(x_0, x_ref_vec, x_pred_vec, u_pred_vec, vx_ref, U{k}, params);
 
     x_pred = reshape(x_pred_vec, nx, []).';
     u_pred = reshape(u_pred_vec, nu, []).';
@@ -223,7 +229,7 @@ for k = 1:n-1
 
     % Apply first control
     u = u_pred(1,:)';
-    %u = [in.st(k);in.mz(k)]; % Test with measured inputs
+    % u = [in.st(k);in.mz(k)]; % Test with measured inputs
 
     U{k+1} = u;
 
@@ -233,25 +239,34 @@ for k = 1:n-1
     % X{k+1} = sim_ltv(Xg', u', vx_ref(1), dt);
 
     % Compare last seen states with mpc predicted. Model error
-    if k > Np
-        X_compare = X(k-Np+1:k+1);
-        U_compare = U(k-Np+1:k);
+    if k > Np+1
+        s = k-Np+1;
+        X_compare = X(s:k+1);
+        U_compare = U(s+1:k+1);
         
         % Convert to local
         x_comp = NaN(Np,6);
         u_comp = NaN(Np,2);
         vx_comp = NaN(Np,1);
-        x_0_comp = global_to_local_state(X_compare{1}, X_compare{1});
+        % x_0_comp = global_to_local_state(X_compare{1}, X_compare{1});
+        % for i = 1:Np
+        %     [x_comp(i,:), ~] = global_to_local_state(X_compare{i+1}, X_compare{1});
+        %     u_comp(i,:) = U_compare{i}';
+        %     vx_comp(i) = X_compare{i}(4);
+        % end
+        x_0_comp = X_compare{1}([2 5 3 6 7 8]);
+        
         for i = 1:Np
-            [x_comp(i,:), vx_comp(i)] = global_to_local_state(X_compare{i+1}, X_compare{1});
+            x_comp(i,:) = X_compare{i+1}([2 5 3 6 7 8]);
             u_comp(i,:) = U_compare{i}';
+            vx_comp(i)  = X_compare{i}(4);
         end
 
         % Use MPC function again to compute the predicted with 
         x_comp_vec  = reshape(x_comp.', [], 1);
         u_comp_vec  = reshape(u_comp.', [], 1);
 
-        [~,~,x_pred_comp_vec] = mpc(x_0_comp, x_comp_vec, x_comp_vec, u_comp_vec, vx_comp, params);
+        [~,~,x_pred_comp_vec] = mpc(x_0_comp, x_comp_vec, x_comp_vec, u_comp_vec, vx_comp, U{k}, params);
 
         x_pred_comp = reshape(x_pred_comp_vec, nx, []).';
 
@@ -272,7 +287,7 @@ for k = 1:n-1
 
     fprintf("Iteration %i done\n", k);
 end
-%% PLOT RESbicycleDynamic_linearULTS
+%% PLOT RESULTS
 
 % Convert cell → matrix
 Xg_mat = cell2mat(X')';   % N x 6
@@ -389,12 +404,13 @@ function X_ref = build_reference_global(traj, Xg, dt, Np)
         x_t   = interp1(traj.s, traj.x, s_i, 'spline');
         y_t   = interp1(traj.s, traj.y, s_i, 'spline');
         psi_t = interp1(traj.s, traj.psi, s_i, 'spline');
+        r_t   = interp1(traj.s, traj.r, s_i, 'spline'); 
 
         % Propagate arc-length using trajectory speed
         s_i = s_i + vx_i * dt;
 
         % Build global reference states
-        X_ref{i} = [x_t; y_t; psi_t; vx_i; 0; 0; 0; 0];
+        X_ref{i} = [x_t; y_t; psi_t; vx_i; 0; r_t; 0; 0];
     end
 end
 
