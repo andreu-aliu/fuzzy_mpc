@@ -22,6 +22,7 @@ def generate_launch_description():
             name='fuzzy_mpc',
             namespace='as/c',
             output='screen',
+            # prefix = ['gnome-terminal -- gdb -x /home/andreu/ros_ws/src/as/control/fuzzy_mpc/debug/breakpoints.gdb --args'], #Debug with breakpoints
             prefix = ['gnome-terminal -- gdb --args'], #Debug only
             parameters=[    
                 params_file,                        # Generic parameters of fuzzy_mpc

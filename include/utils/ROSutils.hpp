@@ -4,6 +4,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <eigen3/Eigen/Dense>
 #include "utils/Config.hpp"
+#include "utils/auxiliar.hpp"
 #include "ament_index_cpp/get_package_share_directory.hpp"
 
 #include "cat_msgs/msg/car_state.hpp"
@@ -23,86 +24,103 @@ inline void fill_config(Config& cfg, rclcpp::Node* node)
     cfg.share_path = ament_index_cpp::get_package_share_directory("fuzzy_mpc") + "/";
 
     // Car parameters
-    node->get_parameter_or("Car.m",  cfg.car.m,  1575.0);
-    node->get_parameter_or("Car.I",  cfg.car.I,  2875.0);
-    node->get_parameter_or("Car.Lf", cfg.car.Lf, 1.2);
-    node->get_parameter_or("Car.Lr", cfg.car.Lr, 1.6);
-    node->get_parameter_or("Car.Bf", cfg.car.Bf, 0.55);
-    node->get_parameter_or("Car.Br", cfg.car.Br, 0.55);
-    node->get_parameter_or("Car.Cf", cfg.car.Cf, 19000.0);
-    node->get_parameter_or("Car.Cr", cfg.car.Cr, 33000.0);
-    node->get_parameter_or("Car.Df", cfg.car.Df, 0.8);
-    node->get_parameter_or("Car.Dr", cfg.car.Dr, 0.8);
+    node->get_parameter("Car.m",  cfg.car.m);
+    node->get_parameter("Car.I",  cfg.car.I);
+    node->get_parameter("Car.Lf", cfg.car.Lf);
+    node->get_parameter("Car.Lr", cfg.car.Lr);
+    node->get_parameter("Car.Bf", cfg.car.Bf);
+    node->get_parameter("Car.Br", cfg.car.Br);
+    node->get_parameter("Car.Cf", cfg.car.Cf);
+    node->get_parameter("Car.Cr", cfg.car.Cr);
+    node->get_parameter("Car.Df", cfg.car.Df);
+    node->get_parameter("Car.Dr", cfg.car.Dr);
     
     // MPC parameters
-    node->get_parameter_or("MPC.n_horizon",  cfg.mpc.n_horizon,  10);
-    node->get_parameter_or("MPC.n_planning", cfg.mpc.n_planning, 20);
-    node->get_parameter_or("MPC.n_states",   cfg.mpc.n_states,   5);
-    node->get_parameter_or("MPC.n_controls", cfg.mpc.n_controls, 1);
-    node->get_parameter_or("MPC.Ts",         cfg.mpc.Ts,         0.1);
-    node->get_parameter_or("MPC.Disc",       cfg.mpc.disc,       0.0);
-    node->get_parameter_or("MPC.latency",    cfg.mpc.latency,    0.0);
+    node->get_parameter("MPC.n_horizon",  cfg.mpc.n_horizon);
+    node->get_parameter("MPC.n_planning", cfg.mpc.n_planning);
+    node->get_parameter("MPC.n_states",   cfg.mpc.n_states);
+    node->get_parameter("MPC.n_controls", cfg.mpc.n_controls);
+    node->get_parameter("MPC.Ts",         cfg.mpc.Ts);
+    node->get_parameter("MPC.Disc",       cfg.mpc.disc);
+    node->get_parameter("MPC.latency",    cfg.mpc.latency);
 
-    node->get_parameter_or("MPC.verbose",    cfg.mpc.verbose,    false);
-    node->get_parameter_or("MPC.save_debug", cfg.mpc.save_debug, false);
+    node->get_parameter("MPC.verbose",    cfg.mpc.verbose);
+    node->get_parameter("MPC.save_debug", cfg.mpc.save_debug);
 
-    node->get_parameter_or("MPC.q_lat",      cfg.mpc.q_lat,      1.0);
-    node->get_parameter_or("MPC.q_vy",       cfg.mpc.q_vy,       1.0);
-    node->get_parameter_or("MPC.q_phi",      cfg.mpc.q_phi,      1.0);
-    node->get_parameter_or("MPC.q_r",        cfg.mpc.q_r,        1.0);
-    node->get_parameter_or("MPC.q_delta",    cfg.mpc.q_delta,    1.0);
-    node->get_parameter_or("MPC.r_delta",    cfg.mpc.r_delta,    1.0);
-    node->get_parameter_or("MPC.p_lat",      cfg.mpc.p_lat,      10.0);
-    node->get_parameter_or("MPC.p_vy",       cfg.mpc.p_vy,       10.0);
-    node->get_parameter_or("MPC.p_phi",      cfg.mpc.p_phi,      10.0);
-    node->get_parameter_or("MPC.p_r",        cfg.mpc.p_r,        10.0);
-    node->get_parameter_or("MPC.p_delta",    cfg.mpc.p_delta,    10.0);
-    node->get_parameter_or("MPC.q_lat_init", cfg.mpc.q_lat_init, 100.0);
-    node->get_parameter_or("MPC.q_phi_init", cfg.mpc.q_phi_init, 100.0);
-    node->get_parameter_or("MPC.q_delta_init", cfg.mpc.q_delta_init, 100.0);
-    node->get_parameter_or("MPC.r_delta_init", cfg.mpc.r_delta_init, 100.0);
-    node->get_parameter_or("MPC.vx_to_finish_init", cfg.mpc.vx_to_finish_init, 5.0);
+    node->get_parameter("MPC.q_lat",      cfg.mpc.q_lat);
+    node->get_parameter("MPC.q_vy",       cfg.mpc.q_vy);
+    node->get_parameter("MPC.q_phi",      cfg.mpc.q_phi);
+    node->get_parameter("MPC.q_r",        cfg.mpc.q_r);
+    node->get_parameter("MPC.q_delta",    cfg.mpc.q_delta);
+    node->get_parameter("MPC.q_delta_dot",cfg.mpc.q_delta_dot);
+
+    node->get_parameter("MPC.p_lat",      cfg.mpc.p_lat);
+    node->get_parameter("MPC.p_vy",       cfg.mpc.p_vy);
+    node->get_parameter("MPC.p_phi",      cfg.mpc.p_phi);
+    node->get_parameter("MPC.p_r",        cfg.mpc.p_r);
+    node->get_parameter("MPC.p_delta",    cfg.mpc.p_delta);
+    node->get_parameter("MPC.p_delta_dot",cfg.mpc.p_delta_dot);
+
+    node->get_parameter("MPC.q_lat_init", cfg.mpc.q_lat_init);
+    node->get_parameter("MPC.q_vy_init", cfg.mpc.q_lat_init);
+    node->get_parameter("MPC.q_phi_init", cfg.mpc.q_phi_init);
+    node->get_parameter("MPC.q_delta_init", cfg.mpc.q_delta_init);
+    node->get_parameter("MPC.q_delta_dot_init", cfg.mpc.q_delta_dot_init);
+
+    node->get_parameter("MPC.r_st",       cfg.mpc.r_st);
+    node->get_parameter("MPC.r_st_init",  cfg.mpc.r_st);
+
+    node->get_parameter("MPC.vx_to_finish_init", cfg.mpc.vx_to_finish_init);
 
     // Topics
-    node->get_parameter_or("Topics.InState",     cfg.topics.in_state,     std::string("/as/c/state"));
-    node->get_parameter_or("Topics.InPlanner",   cfg.topics.in_planner,   std::string("/as/c/trajectory/locator"));
-    node->get_parameter_or("Topics.InVelocities",cfg.topics.in_velocity,  std::string("/as/c/pid/velocity"));
-    node->get_parameter_or("Topics.OutSteering", cfg.topics.out_steering, std::string("/as/c/steering"));
-    node->get_parameter_or("Topics.OutDuration", cfg.topics.out_duration, std::string("/as/c/fuzzy_mpc/duration"));
+    node->get_parameter("Topics.InState",     cfg.topics.in_state);
+    node->get_parameter("Topics.InPlanner",   cfg.topics.in_planner);
+    node->get_parameter("Topics.InVelocities",cfg.topics.in_velocity);
+    node->get_parameter("Topics.OutSteering", cfg.topics.out_steering);
+    node->get_parameter("Topics.OutDuration", cfg.topics.out_duration);
 
-    node->get_parameter_or("Topics.Vis.PredictedSteering", cfg.topics.vis.predictedSteering, std::string("/as/c/mpc/vis/predicted/steering"));
-    node->get_parameter_or("Topics.Vis.PredictedPath",     cfg.topics.vis.predictedPath,     std::string("/as/c/mpc/vis/predicted/path"));
-    node->get_parameter_or("Topics.Vis.PredictedHeading",  cfg.topics.vis.predictedHeading,  std::string("/as/c/mpc/vis/predicted/heading"));
-    node->get_parameter_or("Topics.Vis.ActualPath",        cfg.topics.vis.actualPath,        std::string("/as/c/mpc/vis/actual/path"));
-    node->get_parameter_or("Topics.Debug.OutLateralError", cfg.topics.debug.out_lateral_error, std::string("/as/c/mpc/debug/lateralError"));
-    node->get_parameter_or("Topics.Debug.OutHeadingError", cfg.topics.debug.out_heading_error, std::string("/as/c/mpc/debug/headingError"));
+    node->get_parameter("Topics.Vis.PredictedSteering", cfg.topics.vis.predictedSteering);
+    node->get_parameter("Topics.Vis.PredictedPath",     cfg.topics.vis.predictedPath);
+    node->get_parameter("Topics.Vis.PredictedHeading",  cfg.topics.vis.predictedHeading);
+    node->get_parameter("Topics.Vis.ReferencePath",     cfg.topics.vis.referencePath);
+    node->get_parameter("Topics.Debug.OutLateralError", cfg.topics.debug.out_lateral_error);
+    node->get_parameter("Topics.Debug.OutHeadingError", cfg.topics.debug.out_heading_error);
 }
 
 // From ROS
-Eigen::VectorXd stateMsg(const cat_msgs::msg::CarState::SharedPtr& msg){
-    // car_state: [x, y, vx, vy, phi, r, delta]
-    Eigen::VectorXd car_state(7);
-    car_state << msg->odom.position.x, msg->odom.position.y, msg->odom.heading,
-                 msg->odom.velocity.x, msg->odom.velocity.y, msg->odom.velocity.w, 
-                 msg->steering;
+State stateMsg(const cat_msgs::msg::CarState::SharedPtr& msg){
+
+    State car_state;
+
+    car_state.x = msg->odom.position.x;
+    car_state.y = msg->odom.position.y;
+    car_state.psi = msg->odom.heading;
+    car_state.vx = msg->odom.velocity.x;
+    car_state.vy = msg->odom.velocity.y;
+    car_state.r = msg->odom.velocity.w;
+    car_state.delta = msg->steering;
 
     return car_state;
 }
 
-Eigen::MatrixXd planMsg(const cat_msgs::msg::ObjectiveArrayCurv::SharedPtr& msg) {
+std::vector<TrajectoryPoint> planMsg(const cat_msgs::msg::ObjectiveArrayCurv::SharedPtr& msg) {
     Config& cfg = Config::getInstance();
-    Eigen::MatrixXd planner(msg->objectives.size(), 9);
 
-    for (size_t i = 0; i < msg->objectives.size(); ++i) {
-        planner(i, 0) = msg->objectives[i].x;
-        planner(i, 1) = msg->objectives[i].y;
-        planner(i, 2) = msg->objectives[i].s;
-        planner(i, 3) = (fabs(msg->objectives[i].k) < 1e-7) ? 1e-7 : msg->objectives[i].k; // avoid absolut zeros
-        planner(i, 4) = msg->objectives[i].vx;
-        planner(i, 5) = msg->objectives[i].l;
-        planner(i, 6) = msg->objectives[i].r;
-        planner(i, 7) = msg->objectives[i].ax;
-        planner(i, 8) = msg->objectives[i].w;
+    std::vector<TrajectoryPoint> planner;
+
+    for(size_t i = 0; i < msg->objectives.size(); ++i) {
+        TrajectoryPoint point;
+        point.x = msg->objectives[i].x;
+        point.y = msg->objectives[i].y;
+        point.s = msg->objectives[i].s;
+        point.k = (fabs(msg->objectives[i].k) < 1e-7) ? 1e-7 : msg->objectives[i].k; // avoid absolut zeros
+        point.vx = msg->objectives[i].vx;
+        point.l = msg->objectives[i].l;
+        point.r = msg->objectives[i].r;
+        point.ax = msg->objectives[i].ax;
+        point.w = msg->objectives[i].w;
+
+        planner.push_back(point);
     }
 
     return planner;
@@ -178,22 +196,31 @@ visualization_msgs::msg::MarkerArray headingMsg(const Eigen::MatrixXd &state){
     return markerArray;
 }
 
-nav_msgs::msg::Path pathMsg(const Eigen::MatrixXd &state){
+nav_msgs::msg::Path localPathMsg(
+    const std::vector<State> &local_path,
+    const State &local_state)
+{
+    nav_msgs::msg::Path path_msg;
 
-    nav_msgs::msg::Path pathMsg;
-	geometry_msgs::msg::PoseStamped pose;
+    path_msg.header.stamp = rclcpp::Clock().now();
+    path_msg.header.frame_id = "base_link";
 
-    pathMsg.header.stamp    = rclcpp::Clock().now();
-    pathMsg.header.frame_id = "global";
+    for (const auto& p : local_path)
+    {
+        // Reuse your transformation
+        State p_bl = global_to_local_state(p, local_state);
 
-    for (unsigned i = 0; i < state.rows(); i++) {
+        geometry_msgs::msg::PoseStamped pose;
+        pose.header = path_msg.header;
 
-        pose.pose.position.x = state(i, 0);
-        pose.pose.position.y = state(i, 1);
+        pose.pose.position.x = p_bl.x;
+        pose.pose.position.y = p_bl.y;
+        pose.pose.position.z = 0.0;
 
-        pathMsg.poses.push_back(pose);
+        path_msg.poses.push_back(pose);
     }
-    return pathMsg;
+    std::cout << "Path message created with " << path_msg.poses.size() << " poses." << std::endl;
+    return path_msg;
 }
 
 visualization_msgs::msg::MarkerArray steeringMsg(const Eigen::MatrixXd &state){

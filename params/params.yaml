@@ -19,14 +19,14 @@ as/c:
 
       MPC:
         n_horizon: 60
-        n_planning: 2000
+        n_planning: 200
         n_states: 6
         n_controls: 1
         Ts: 0.01
         Disc: 0.025
         latency: 1.0
         
-        verbose: false
+        verbose: true
 
         save_debug: true
 
@@ -62,7 +62,7 @@ as/c:
           PredictedSteering:  /vis/predictedPath/steering
           PredictedPath:      /vis/predictedPath/path
           PredictedHeading:   /vis/predictedPath/heading
-          ActualPath:         /vis/actualPlanner/path
+          ReferencePath:      /vis/referencePath
         Debug:
           OutLateralError: /as/c/mpc/debug/lateralError
           OutHeadingError: /as/c/mpc/debug/headingError

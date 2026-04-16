@@ -21,6 +21,8 @@ struct Config{
         double Cr;  // rear stiffness parameter C
         double Df;  // front stiffness parameter D
         double Dr;  // rear stiffness parameter D
+        double steering_damp;
+        double steering_omega;
     }car;
 
     // MPC
@@ -42,19 +44,25 @@ struct Config{
         double q_phi;
         double q_r;
         double q_delta;
-        // control weights
-        double r_delta;
+        double q_delta_dot;
+        // initialization weights
+        double q_lat_init;
+        double q_vy_init;
+        double q_phi_init;
+        double q_r_init;
+        double q_delta_init;
+        double q_delta_dot_init;
         // last point state weights
         double p_lat;
         double p_vy;
         double p_phi;
         double p_r;
         double p_delta;
-        // initialization weights
-        double q_lat_init;
-        double q_phi_init;
-        double q_delta_init;
-        double r_delta_init;
+        double p_delta_dot;
+        // control weights
+        double r_st;
+        // control weights init
+        double r_st_init;
 
         double vx_to_finish_init; // velocity to reach the end of the trajectory for initialization [m/s]
     }mpc;
@@ -71,7 +79,7 @@ struct Config{
             std::string predictedSteering; // predicted steering visualization
             std::string predictedPath;     // predicted path visualization
             std::string predictedHeading;  // predicted heading visualization
-            std::string actualPath;        // actual path visualization
+            std::string referencePath;     // reference path visualization
         }vis;
 
         struct Debug{
