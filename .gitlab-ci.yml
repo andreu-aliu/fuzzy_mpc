@@ -1,0 +1,27 @@
+stages:
+  - validate
+
+validate_laps:
+  stage: validate
+  image: alpine:3.19
+
+  before_script:
+    - apk add --no-cache yq
+
+  script:
+    - |
+      FAIL=0
+
+      SAVE_DEBUG=$(yq '."as/c".fuzzy_mpc.ros__parameters.save_debug' config/params.yaml)
+
+      if [ "$SAVE_DEBUG" != "false" ]; then
+        echo "WARNING: save_debug is $SAVE_DEBUG (expected false)"
+        FAIL=1
+      else
+        echo "OK: save_debug = false"
+      fi
+
+      exit $FAIL
+
+
+  allow_failure: false

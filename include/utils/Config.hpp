@@ -4,10 +4,52 @@
 
 struct Config{
 
+    bool verbose;
+    bool save_debug;
     bool profile;
-    std::string ws_path;
     std::string debug_path;
+
+    std::string ws_path;
     std::string share_path;
+
+    // MPC
+    struct MPC{
+        double Ts;
+        int n_horizon;      // prediction horizon        
+        double latency;     // actuation latency [s]
+
+        // scalings
+        double scale_y;
+        double scale_vy;
+        double scale_phi;
+        double scale_r;
+        double scale_st;
+        double scale_dst;
+        double scale_mz;
+        double scale_dmz;
+        
+        // state weights
+        double q_lat;
+        double q_vy;
+        double q_phi;
+        double q_r;
+        double q_delta;
+        double q_delta_dot;
+        // last point state weights
+        double p_lat;
+        double p_vy;
+        double p_phi;
+        double p_r;
+        double p_delta;
+        double p_delta_dot;
+        // control weights
+        double r_st;
+        double r_mz;
+        // Change in control weights
+        double rd_st;
+        double rd_mz;
+
+    }mpc;
 
     // Car
     struct Car{
@@ -24,48 +66,6 @@ struct Config{
         double steering_damp;
         double steering_omega;
     }car;
-
-    // MPC
-    struct MPC{
-        int n_horizon;      // prediction horizon
-        int n_planning;     // number of points from the planner to consider
-        int n_states;       // number of states
-        int n_controls;     // number of controls
-        double Ts;          // sampling time
-        double disc;        // discretization method (0: Euler, 1: Tustin)
-        double latency;     // actuation latency [s]
-        
-        bool verbose;       // verbosity flag
-        bool save_debug;
-        
-        // state weights
-        double q_lat;
-        double q_vy;
-        double q_phi;
-        double q_r;
-        double q_delta;
-        double q_delta_dot;
-        // initialization weights
-        double q_lat_init;
-        double q_vy_init;
-        double q_phi_init;
-        double q_r_init;
-        double q_delta_init;
-        double q_delta_dot_init;
-        // last point state weights
-        double p_lat;
-        double p_vy;
-        double p_phi;
-        double p_r;
-        double p_delta;
-        double p_delta_dot;
-        // control weights
-        double r_st;
-        // control weights init
-        double r_st_init;
-
-        double vx_to_finish_init; // velocity to reach the end of the trajectory for initialization [m/s]
-    }mpc;
 
     // Topics
     struct Topics{

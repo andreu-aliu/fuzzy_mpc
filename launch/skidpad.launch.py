@@ -12,8 +12,8 @@ def generate_launch_description():
         os.path.join(pkg_share, '..', '..', '..', '..')
     )
 
-    params_file = os.path.join(pkg_share, 'params', 'params.yaml')
-    dyn_file    = os.path.join(pkg_share, 'params', 'dyn_trackdrive.yaml')
+    params_file = os.path.join(pkg_share, 'config', 'params.yaml')
+    dyn_file    = os.path.join(pkg_share, 'config', 'dyn_trackdrive.yaml')
 
     return LaunchDescription([
         Node(

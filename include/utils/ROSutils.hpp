@@ -18,34 +18,27 @@
 
 inline void fill_config(Config& cfg, rclcpp::Node* node)
 {
+    node->get_parameter("verbose", cfg.verbose);
+    node->get_parameter("save_debug", cfg.save_debug);
     node->get_parameter("profile", cfg.profile);
-    node->get_parameter("ws_path", cfg.ws_path);
     node->get_parameter("debug_path", cfg.debug_path);
+    
+    node->get_parameter("ws_path", cfg.ws_path);
     cfg.share_path = ament_index_cpp::get_package_share_directory("fuzzy_mpc") + "/";
-
-    // Car parameters
-    node->get_parameter("Car.m",  cfg.car.m);
-    node->get_parameter("Car.I",  cfg.car.I);
-    node->get_parameter("Car.Lf", cfg.car.Lf);
-    node->get_parameter("Car.Lr", cfg.car.Lr);
-    node->get_parameter("Car.Bf", cfg.car.Bf);
-    node->get_parameter("Car.Br", cfg.car.Br);
-    node->get_parameter("Car.Cf", cfg.car.Cf);
-    node->get_parameter("Car.Cr", cfg.car.Cr);
-    node->get_parameter("Car.Df", cfg.car.Df);
-    node->get_parameter("Car.Dr", cfg.car.Dr);
     
     // MPC parameters
     node->get_parameter("MPC.n_horizon",  cfg.mpc.n_horizon);
-    node->get_parameter("MPC.n_planning", cfg.mpc.n_planning);
-    node->get_parameter("MPC.n_states",   cfg.mpc.n_states);
-    node->get_parameter("MPC.n_controls", cfg.mpc.n_controls);
     node->get_parameter("MPC.Ts",         cfg.mpc.Ts);
-    node->get_parameter("MPC.Disc",       cfg.mpc.disc);
     node->get_parameter("MPC.latency",    cfg.mpc.latency);
 
-    node->get_parameter("MPC.verbose",    cfg.mpc.verbose);
-    node->get_parameter("MPC.save_debug", cfg.mpc.save_debug);
+    node->get_parameter("MPC.scale_y",       cfg.mpc.scale_y);
+    node->get_parameter("MPC.scale_vy",      cfg.mpc.scale_vy);
+    node->get_parameter("MPC.scale_phi",     cfg.mpc.scale_phi);
+    node->get_parameter("MPC.scale_r",       cfg.mpc.scale_r);
+    node->get_parameter("MPC.scale_st",      cfg.mpc.scale_st);
+    node->get_parameter("MPC.scale_dst",     cfg.mpc.scale_dst);
+    node->get_parameter("MPC.scale_mz",      cfg.mpc.scale_mz);
+    node->get_parameter("MPC.scale_dmz",     cfg.mpc.scale_dmz);
 
     node->get_parameter("MPC.q_lat",      cfg.mpc.q_lat);
     node->get_parameter("MPC.q_vy",       cfg.mpc.q_vy);
@@ -61,16 +54,25 @@ inline void fill_config(Config& cfg, rclcpp::Node* node)
     node->get_parameter("MPC.p_delta",    cfg.mpc.p_delta);
     node->get_parameter("MPC.p_delta_dot",cfg.mpc.p_delta_dot);
 
-    node->get_parameter("MPC.q_lat_init", cfg.mpc.q_lat_init);
-    node->get_parameter("MPC.q_vy_init", cfg.mpc.q_lat_init);
-    node->get_parameter("MPC.q_phi_init", cfg.mpc.q_phi_init);
-    node->get_parameter("MPC.q_delta_init", cfg.mpc.q_delta_init);
-    node->get_parameter("MPC.q_delta_dot_init", cfg.mpc.q_delta_dot_init);
-
     node->get_parameter("MPC.r_st",       cfg.mpc.r_st);
-    node->get_parameter("MPC.r_st_init",  cfg.mpc.r_st);
+    node->get_parameter("MPC.r_mz",       cfg.mpc.r_mz);
 
-    node->get_parameter("MPC.vx_to_finish_init", cfg.mpc.vx_to_finish_init);
+    node->get_parameter("MPC.r_dst",      cfg.mpc.rd_st);
+    node->get_parameter("MPC.r_dmz",      cfg.mpc.rd_mz);
+
+    // Car parameters
+    node->get_parameter("Car.m",  cfg.car.m);
+    node->get_parameter("Car.I",  cfg.car.I);
+    node->get_parameter("Car.Lf", cfg.car.Lf);
+    node->get_parameter("Car.Lr", cfg.car.Lr);
+    node->get_parameter("Car.Bf", cfg.car.Bf);
+    node->get_parameter("Car.Br", cfg.car.Br);
+    node->get_parameter("Car.Cf", cfg.car.Cf);
+    node->get_parameter("Car.Cr", cfg.car.Cr);
+    node->get_parameter("Car.Df", cfg.car.Df);
+    node->get_parameter("Car.Dr", cfg.car.Dr);
+    node->get_parameter("Car.steering_damp",  cfg.car.steering_damp);
+    node->get_parameter("Car.steering_omega", cfg.car.steering_omega);
 
     // Topics
     node->get_parameter("Topics.InState",     cfg.topics.in_state);
@@ -131,7 +133,7 @@ Eigen::VectorXd velsMsg(const cat_msgs::msg::CarVelocityArray::SharedPtr& msg) {
     const size_t n = msg->velocities.size();
 
     if (n < cfg.mpc.n_horizon) {
-        if (cfg.mpc.verbose)
+        if (cfg.verbose)
             RCLCPP_WARN(rclcpp::get_logger("fuzzy_mpc"), "MPC: Velocity profile too short!");
     }
 

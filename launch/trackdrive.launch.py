@@ -12,8 +12,8 @@ def generate_launch_description():
         os.path.join(pkg_share, '..', '..', '..', '..')
     )
 
-    params_file = os.path.join(pkg_share, 'params', 'params.yaml')
-    dyn_file    = os.path.join(pkg_share, 'params', 'dyn_trackdrive.yaml')
+    params_file = os.path.join(pkg_share, 'config', 'params.yaml')
+    dyn_file    = os.path.join(pkg_share, 'config', 'dyn_trackdrive.yaml')
 
     return LaunchDescription([
         Node(
@@ -22,8 +22,8 @@ def generate_launch_description():
             name='fuzzy_mpc',
             namespace='as/c',
             output='screen',
-            # prefix = ['gnome-terminal -- gdb -x /home/andreu/ros_ws/src/as/control/fuzzy_mpc/debug/breakpoints.gdb --args'], #Debug with breakpoints
-            prefix = ['gnome-terminal -- gdb --args'], #Debug only
+            # prefix = ['gnome-terminal -- gdb -x /home/andreu/ros_ws/src/as/control/fuzzy_mpc/debug/breakpoints.gdb --args'], # Debug with breakpoints
+            # prefix = ['gnome-terminal -- gdb --args'], # Debug only
             parameters=[    
                 params_file,                        # Generic parameters of fuzzy_mpc
                 dyn_file,                           # Specific event parameters

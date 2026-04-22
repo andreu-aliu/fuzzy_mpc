@@ -21,8 +21,8 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
     folder = Path(debug_folder)
     
     # Read CSV files
-    delta_u_opt = pd.read_csv(folder / "delta_u_opt.csv", header=None).iloc[row].values
-    pred_states = pd.read_csv(folder / "pred_states.csv", header=None).iloc[row].values
+    delta_u_opt = pd.read_csv(folder / "u_opt.csv", header=None).iloc[row].values
+    pred_states = pd.read_csv(folder / "x_pred.csv", header=None).iloc[row].values
     x_ref = pd.read_csv(folder / "x_ref.csv", header=None).iloc[row].values
     x0 = pd.read_csv(folder / "x0.csv", header=None).iloc[row].values
     
@@ -67,4 +67,4 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
     plt.show()
 
 if __name__ == "__main__":
-    visualize_mpc_debug(n_inputs=1, n_states=6, n_horizon=60)
+    visualize_mpc_debug(n_inputs=2, n_states=6, n_horizon=60, row=1)

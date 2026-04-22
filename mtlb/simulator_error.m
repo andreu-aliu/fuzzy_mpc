@@ -31,6 +31,9 @@ params.p_dst= 0;
 params.r_st = 10;
 params.r_mz = 0; 
 
+params.rd_st = 2;
+params.rd_mz = 0; 
+
 % Bounds
 params.min_st = -0.436;
 params.max_st = 0.436;
@@ -78,7 +81,7 @@ from_mat = cell2mat(X_mat);
     x_comp_vec  = reshape(x_comp.', [], 1);
     u_comp_vec  = reshape(u_comp.', [], 1);
 
-    [~,~,x_pred_comp_vec] = mpc(x_0_comp, x_comp_vec, x_comp_vec, u_comp_vec, vx_comp, params);
+    [~,~,x_pred_comp_vec] = mpc(x_0_comp, x_comp_vec, x_comp_vec, u_comp_vec, vx_comp, zeros(2*Np,1), params);
 
     x_pred_comp = reshape([x_0_comp ;x_pred_comp_vec], 6, []).';
 

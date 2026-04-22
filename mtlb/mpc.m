@@ -39,9 +39,9 @@ for i = 1:n_horizon
     
     % Select model for MPC
     % [Ad{i}, Bd{i}, Cd{i}] = anfis_residuals_matrix(xi, ui, vxi); anfis = false;
-    [Ad{i}, Bd{i}, Cd{i}] = anfis_delta_matrix(xi, ui, vxi); anfis = true;
+    % [Ad{i}, Bd{i}, Cd{i}] = anfis_delta_matrix(xi, ui, vxi); anfis = true;
     % [Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi); anfis = false;
-    % [Ad{i}, Bd{i}, Cd{i}] = ltv_matrix(xi, ui, vxi); anfis = false;
+    [Ad{i}, Bd{i}, Cd{i}] = ltv_matrix(xi, ui, vxi); anfis = false;
 
     % Check inputs and matrixes
     assert(all(isfinite(xi)), 'x_prev invalid at step %d', i);

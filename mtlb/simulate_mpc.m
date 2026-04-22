@@ -139,7 +139,7 @@ params.scale_dst = 0.001;   % rad/0.02s
 params.scale_mz  = 1000;  % Nm
 
 % Weights
-params.q_y  = 100;
+params.q_y  = 200;
 params.q_vy = 0;
 params.q_psi= 0;
 params.q_r  = 1;
@@ -153,7 +153,7 @@ params.p_r  = 0;
 params.p_st = 0;
 params.p_dst= 0;
 
-params.r_st = 0;
+params.r_st = 1;
 params.r_mz = 0; 
 
 params.rd_st = 2;
@@ -166,7 +166,7 @@ params.min_mz = -0;
 params.max_mz = 0;
 
 % Debug options
-debug_opts.enabled = true;
+debug_opts.enabled = false;
 debug_opts.step    = [];     % [] = all, or e.g. 20
 debug_opts.pause   = false ;  % true = step-by-step
 debug_opts.figure_id = 99;
@@ -234,8 +234,8 @@ for k = 1:n-1
     U{k+1} = u;
 
     % Simulate GLOBAL dynamics
-    X{k+1} = sim_anfis_delta(Xg', u', vx_ref(1), dt)';
-    % X{k+1} = sim_bicycleDynamic_linear(Xg', u', meas.vx(k), dt)';
+    % X{k+1} = sim_anfis_delta(Xg', u', vx_ref(1), dt)';
+    X{k+1} = sim_bicycleDynamic_linear(Xg', u', meas.vx(k), dt)';
     % X{k+1} = sim_ltv(Xg', u', vx_ref(1), dt);
 
     % Compare last seen states with mpc predicted. Model error

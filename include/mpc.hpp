@@ -54,72 +54,133 @@ using Controls = std::vector<Control>;
 class MPC {
        
   private:
+
+    // Objects
     Config& cfg;
     Solver solver;
     std::unique_ptr<Model> model;
+
+    // Constants
+    const size_t n_states = 6;
+    const size_t n_controls = 2;
+    size_t n_horizon;
+    const float Ts = 0.025;
+
+    // Weights matrices
+    Eigen::VectorXd q_diag;
+    Eigen::MatrixXd R, Rd, R_, Rd_, D;
 
     // Model matrices
     ModelMatrices mpc_matrices;
     ModelMatrices evaluator_matrices;
 
-    Eigen::MatrixXd QS, S_transpose, StQS, H;
-    Eigen::VectorXd g, u_opt;
-
-    // Weights matrices
-    Eigen::VectorXd q_diag;
-    Eigen::MatrixXd R;
-    Eigen::MatrixXd R_;
-
-    // Variables
-    int n_states_, n_controls_, n_horizon_, n_planning_;
-    double Ts_, disc_;
-    bool verbose_;
+    // Solve matrices
+    Eigen::MatrixXd H;
+    Eigen::VectorXd g, u_opt, d;
 
     // Flags
     bool firstIteration = true;
-    bool init_state = true;
 
     /////////////////////////////////////////////////////////////////////////
     //-------------------------- MPC functions  ---------------------------//
 
     // Builds weights matrices
-    void createWeights(bool init_state)
+    void createWeights()
     {
         PROFC_NODE_
-        
-        // Create matrix R
-        R.setZero();
-        if (init_state)
-            R(0, 0) = cfg.mpc.r_st_init;
-        else
-            R(0, 0) = cfg.mpc.r_st;
 
         // Q_ matrix diagonal
-        Eigen::VectorXd diag_values(n_states_);
-        if (init_state)
-            diag_values << cfg.mpc.q_lat_init, cfg.mpc.q_vy_init, cfg.mpc.q_phi_init, cfg.mpc.q_r, cfg.mpc.q_delta_init, cfg.mpc.q_delta_dot_init;
-        else
-            diag_values << cfg.mpc.q_lat, cfg.mpc.q_vy, cfg.mpc.q_phi, cfg.mpc.q_r, cfg.mpc.q_delta, cfg.mpc.q_delta_dot;
+        Eigen::VectorXd diag_values(n_states);
+        diag_values << cfg.mpc.q_lat / pow(cfg.mpc.scale_y, 2),
+                       cfg.mpc.q_vy / pow(cfg.mpc.scale_vy, 2), 
+                       cfg.mpc.q_phi / pow(cfg.mpc.scale_vy, 2), 
+                       cfg.mpc.q_r / pow(cfg.mpc.scale_r, 2), 
+                       cfg.mpc.q_delta / pow(cfg.mpc.scale_st, 2), 
+                       cfg.mpc.q_delta_dot / pow(cfg.mpc.scale_dst, 2);
 
-        for (size_t i = 0; i < (n_horizon_-1); ++i)
-            q_diag.segment(i * n_states_, n_states_) = diag_values;
+        for (size_t i = 0; i < (n_horizon-1); ++i)
+            q_diag.segment(i * n_states, n_states) = diag_values;
 
-        // Last point weights
-        q_diag.segment((n_horizon_-1)*n_states_, n_states_) << cfg.mpc.p_lat, cfg.mpc.p_vy, cfg.mpc.p_phi, cfg.mpc.p_r, cfg.mpc.p_delta, cfg.mpc.p_delta_dot;
+        q_diag.segment((n_horizon-1)*n_states, n_states) << 
+                cfg.mpc.p_lat / pow(cfg.mpc.scale_y, 2), 
+                cfg.mpc.p_vy / pow(cfg.mpc.scale_vy, 2), 
+                cfg.mpc.p_phi / pow(cfg.mpc.scale_phi, 2), 
+                cfg.mpc.p_r / pow(cfg.mpc.scale_r, 2), 
+                cfg.mpc.p_delta / pow(cfg.mpc.scale_st, 2), 
+                cfg.mpc.p_delta_dot / pow(cfg.mpc.scale_dst, 2);
 
         // Create matrix R_
+        R.setZero();
+        R(0, 0) = cfg.mpc.r_st / pow(cfg.mpc.scale_st, 2);
+        R(1, 1) = cfg.mpc.r_mz / pow(cfg.mpc.scale_mz, 2);
         R_.setZero(); 
-        for (size_t i = 0; i < n_horizon_; ++i)
-            R_.block(i * n_controls_, i * n_controls_, n_controls_, n_controls_) = R;
+        for (size_t i = 0; i < n_horizon; ++i)
+            R_.block(i * n_controls, i * n_controls, n_controls, n_controls) = R;
 
-        // Print the first 20x20 values of R_
-        if (verbose_){
-            std::cout << "diag_values: \n" << diag_values.transpose() << std::endl;
-            std::cout << "R matrix: \n" << R << std::endl;
-            std::cout << "First 20x20 values of R_: \n" << R_.block(0, 0, 20, 20) << std::endl;
+        // Create matrix Rd_
+        Rd.setZero();
+        Rd(0, 0) = cfg.mpc.rd_st / pow(cfg.mpc.scale_dst, 2);
+        Rd(1, 1) = cfg.mpc.rd_mz / pow(cfg.mpc.scale_dmz, 2);
+        Rd_.setZero();
+        for (size_t i = 0; i < n_horizon; ++i)
+            Rd_.block(i * n_controls, i * n_controls, n_controls, n_controls) = Rd;
+        
+        // Create matrix D
+        D.setZero();
+        Eigen::MatrixXd I = Eigen::MatrixXd::Identity(n_controls, n_controls);
+        for (size_t k = 0; k < n_horizon; ++k)
+        {
+            const size_t diag = k * n_controls;
+
+            // Diagonal block
+            D.block(diag, diag, n_controls, n_controls) = I;
+
+            // Subdiagonal block
+            if (k > 0)
+            {
+                const size_t col_prev = (k - 1) * n_controls;
+                D.block(diag, col_prev, n_controls, n_controls) = -I;
+            }
+        }
+
+        if(cfg.save_debug){
+            appendSingleRowToCSV(q_diag, "q_diag");
+            appendSingleRowToCSV(R_, "R_");
+            appendSingleRowToCSV(Rd_, "Rd_");
+            appendSingleRowToCSV(D, "D_");
         }
     }
 
+    // Builds x_ref vector
+    void createReference(const States &local_ref)
+    {
+        PROFC_NODE_
+
+        for (size_t i = 0; i < n_horizon; ++i){
+            if (i < local_ref.size()){
+                mpc_matrices.x_ref.segment(i * n_states, n_states) << local_ref[i].y,           // y
+                                                                        local_ref[i].vy,        // vy
+                                                                        local_ref[i].psi,       // phi
+                                                                        local_ref[i].r,         // r
+                                                                        local_ref[i].delta,     // delta
+                                                                        local_ref[i].delta_dot; // delta dot
+            }else{
+                mpc_matrices.x_ref.segment(i * n_states, n_states) = mpc_matrices.x_ref.segment((i - 1) * n_states, n_states);
+            }
+        }
+
+        if(cfg.verbose){
+            std::cout << "Reference trajectory (first 5 points): " << std::endl;
+            for (size_t i = 0; i < std::min(size_t(5), local_ref.size()); ++i){
+                std::cout << "Point " << i << ": y: " << local_ref[i].y << ", vy: " << local_ref[i].vy << ", psi: " << local_ref[i].psi << ", r: " << local_ref[i].r << ", delta: " << local_ref[i].delta << ", delta_dot: " << local_ref[i].delta_dot << std::endl;
+            }
+        }
+
+        if(cfg.save_debug){
+            appendSingleRowToCSV(mpc_matrices.x_ref, "x_ref");
+        }
+    }
+    
     // Builds the matrixes x_0, x_prev, u_prev, T, S and W. Saves them to Model Matrixes.
     void createModelMatrices(const State &car_state, const States &prev_states, const Controls &prev_controls, ModelMatrices &m)
     {
@@ -134,21 +195,21 @@ class MPC {
               car_state.delta_dot;  // delta dot
 
         // x_prev vector
-        for (size_t i = 0; i < n_horizon_; ++i){
+        for (size_t i = 0; i < n_horizon; ++i){
             if (i < prev_states.size()){
-                m.x_prev.segment(i * n_states_, n_states_) << prev_states[i].y,       // y
+                m.x_prev.segment(i * n_states, n_states) << prev_states[i].y,       // y
                                                             prev_states[i].vy,        // vy
                                                             prev_states[i].psi,       // phi
                                                             prev_states[i].r,         // r
                                                             prev_states[i].delta,     // delta
                                                             prev_states[i].delta_dot; // delta dot
             }else{
-                m.x_prev.segment(i * n_states_, n_states_) = m.x_prev.segment((i - 1) * n_states_, n_states_);
+                m.x_prev.segment(i * n_states, n_states) = m.x_prev.segment((i - 1) * n_states, n_states);
             }
         }
 
         // vx vector
-        for (size_t i = 0; i <= n_horizon_; ++i){
+        for (size_t i = 0; i < n_horizon; ++i){
             if (i < prev_states.size()){
                 m.vx[i] = prev_states[i].vx;
             }else{
@@ -157,21 +218,26 @@ class MPC {
         }
 
         // u_prev vector
-        for (size_t i = 0; i < n_horizon_; ++i){
+        for (size_t i = 0; i < n_horizon; ++i){
             if (i < prev_controls.size()){
-                m.u_prev.segment(i * n_controls_, n_controls_) << prev_controls[i].steering; // steering
+                m.u_prev(i * n_controls) = prev_controls[i].steering; // steering
+                m.u_prev(i * n_controls +1) = prev_controls[i].mz; // steering
             }else{
-                m.u_prev.segment(i * n_controls_, n_controls_) = m.u_prev.segment((i - 1) * n_controls_, n_controls_);
+                m.u_prev.segment(i * n_controls, n_controls) = m.u_prev.segment((i - 1) * n_controls, n_controls);
             }
         }
 
         // Discrete model matrices Ad Bd Cd
-        for (size_t i = 0; i < n_horizon_; ++i){
-            auto prev_state = m.x_prev.segment(i * n_states_, n_states_);
-            auto prev_u = m.u_prev.segment(i * n_controls_, n_controls_);
+        for (size_t i = 0; i < n_horizon; ++i){
+            auto prev_state = m.x_prev.segment(i * n_states, n_states);
+            auto prev_u = m.u_prev.segment(i * n_controls, n_controls);
 
             model->getDiscreteMatrices(prev_state, prev_u, m.vx[i], m.Ad[i], m.Bd[i], m.Cd[i]);
-            
+
+            std::cout << "Ad[" << i << "]:\n" << m.Ad[i] << std::endl;
+            std::cout << "Bd[" << i << "]:\n" << m.Bd[i] << std::endl;
+            std::cout << "Cd[" << i << "]:\n" << m.Cd[i].transpose() << std::endl;
+
             // Sanity check
             if(!m.Ad[i].allFinite() || !m.Bd[i].allFinite() || !m.Cd[i].allFinite()){
                 std::cout << "NaN in model matrices at step " << i << std::endl;
@@ -179,23 +245,22 @@ class MPC {
         }
 
 
-        // Fill matrix T
+        // Fill matrix T // TODO: optimize
         m.T.setZero();
-        for (int i = 0; i < n_horizon_; ++i)
+        for (int i = 0; i < n_horizon; ++i)
         {
             m.Aprod.setIdentity();
-
             for (int k = 0; k <= i; ++k)
             {
                 m.Aprod = m.Ad[k] * m.Aprod;
             }
 
-            m.T.block(i * n_states_, 0, n_states_, n_states_) = m.Aprod;
+            m.T.block(i * n_states, 0, n_states, n_states) = m.Aprod;
         }
 
         // Fill matrix S
         m.S.setZero();
-        for (int i = 0; i < n_horizon_; ++i)
+        for (int i = 0; i < n_horizon; ++i)
         {
             for (int j = 0; j <= i; ++j)
             {
@@ -206,13 +271,13 @@ class MPC {
                     m.Aprod = m.Ad[k] * m.Aprod;
                 }
 
-                m.S.block(i * n_states_, j * n_controls_, n_states_, n_controls_) = m.Aprod * m.Bd[j];
+                m.S.block(i * n_states, j * n_controls, n_states, n_controls) = m.Aprod * m.Bd[j];
             }
         }
 
         // Fill matrix W
         m.W.setZero();
-        for (int i = 0; i < n_horizon_; ++i)
+        for (int i = 0; i < n_horizon; ++i)
         {
             m.wk.setZero();
 
@@ -228,10 +293,10 @@ class MPC {
                 m.wk.noalias() += m.Aprod * m.Cd[j];
             }
 
-            m.W.segment(i * n_states_, n_states_) = m.wk;
+            m.W.segment(i * n_states, n_states) = m.wk;
         }
 
-        if(verbose_){
+        if(cfg.verbose){
             std::cout << "Size of x0: " << m.x0.size() << std::endl;
             std::cout << "Size of x_ref: " << m.x_ref.size() << std::endl;
             std::cout << "Size of x_prev: " << m.x_prev.size() << std::endl;
@@ -241,47 +306,56 @@ class MPC {
             std::cout << "Size of Cd: " << m.Cd.size() << ", each of size: " << m.Cd[0].size() << std::endl;
             std::cout << "Size of T: " << m.T.rows() << "x" << m.T.cols() << std::endl;
             std::cout << "Size of S: " << m.S.rows() << "x" << m.S.cols() << std::endl;
-        }
-    }
-
-    // Builds x_ref vector
-    void createReference(const State &car_state, const States &local_ref)
-    {
-        PROFC_NODE_
-
-        for (size_t i = 0; i < n_horizon_; ++i){
-            if (i < local_ref.size()){
-                mpc_matrices.x_ref.segment(i * n_states_, n_states_) << local_ref[i].y,         // y
-                                                                        local_ref[i].vy,        // vy
-                                                                        local_ref[i].psi,       // phi
-                                                                        local_ref[i].r,         // r
-                                                                        local_ref[i].delta,     // delta
-                                                                        local_ref[i].delta_dot; // delta dot
-            }else{
-                mpc_matrices.x_ref.segment(i * n_states_, n_states_) = mpc_matrices.x_ref.segment((i - 1) * n_states_, n_states_);
-            }
+            std::cout << "Size of W: " << m.W.size() << std::endl;
         }
 
-        if(verbose_){
-            std::cout << "Reference trajectory (first 5 points): " << std::endl;
-            for (size_t i = 0; i < std::min(size_t(5), local_ref.size()); ++i){
-                std::cout << "Point " << i << ": y: " << local_ref[i].y << ", vy: " << local_ref[i].vy << ", psi: " << local_ref[i].psi << ", r: " << local_ref[i].r << ", delta: " << local_ref[i].delta << ", delta_dot: " << local_ref[i].delta_dot << std::endl;
-            }
+        if(cfg.save_debug){
+            appendSingleRowToCSV(m.x0, "x0");
+            appendSingleRowToCSV(m.x_prev, "x_prev");
+            appendSingleRowToCSV(m.vx, "vx");
+            appendSingleRowToCSV(m.u_prev, "u_prev");
+            appendSingleRowToCSV(m.T, "T");
+            appendSingleRowToCSV(m.S, "S");
+            appendSingleRowToCSV(m.W, "W");
         }
     }
 
     // Solve the optimisation problem
-    Controls solve(ModelMatrices &m)
+    Controls solve(ModelMatrices &m, Control u_prev_iter)
     {
         PROFC_NODE_
 
-        QS = (m.S.array().colwise() * q_diag.array()).eval();
-        S_transpose.noalias() = m.S.transpose();
-        StQS.noalias() = S_transpose * QS;
+        std::cout << "q_diag min/max: "
+          << q_diag.minCoeff() << " / " << q_diag.maxCoeff() << std::endl;
 
-        H.noalias() = 2 * (StQS + R_);
+        std::cout << "R_ min/max: "
+                << R_.minCoeff() << " / " << R_.maxCoeff() << std::endl;
+
+        std::cout << "S min/max: "
+                << m.S.minCoeff() << " / " << m.S.maxCoeff() << std::endl;
+
+        std::cout << "T min/max: "
+                << m.T.minCoeff() << " / " << m.T.maxCoeff() << std::endl;
+
+        std::cout << "W min/max: "
+                << m.W.minCoeff() << " / " << m.W.maxCoeff() << std::endl;
+
+        std::cout << "x0: " << m.x0.transpose() << std::endl;
+        std::cout << "u_prev: " << m.u_prev.transpose() << std::endl;
+
+        Eigen::DiagonalMatrix<double, Eigen::Dynamic> Q(q_diag);
+
+        d.setZero();
+        d(0) = -u_prev_iter.steering;
+        d(1) = -u_prev_iter.mz;
+
+        
+        H = 2.0 * (m.S.transpose() * Q * m.S + R_ + D.transpose() * Rd_ * D);
+        H = 0.5 * (H + H.transpose());
+        H.diagonal().array() += 1e-8;
+        
         Eigen::VectorXd e = m.T * m.x0 + m.W - m.x_ref;
-        g.noalias() = 2.0 * m.S.transpose() * e.cwiseProduct(q_diag);   
+        g = 2.0 * (m.S.transpose() * Q * e) + 2.0 * D.transpose() * Rd_ * d; // TODO: 2 is correct?
 
         // Sanity check
         if(!H.allFinite()){
@@ -290,6 +364,7 @@ class MPC {
         if(!g.allFinite()){
             std::cerr << "Error: g vector contains non-finite values" << std::endl;
         }
+
         Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(H);
         double min_eig = eig.eigenvalues().minCoeff();
         if (min_eig <= 0){
@@ -304,16 +379,23 @@ class MPC {
             // solver.solve(H, g, S, T, x0);
             // u_opt = solver.getSolution();
 
-        Controls optimal_controls(n_horizon_);
-        for (size_t i = 0; i < n_horizon_; ++i){
-            optimal_controls[i].steering = u_opt(i * n_controls_);
+        Controls optimal_controls(n_horizon);
+        for (size_t i = 0; i < n_horizon; ++i){
+            optimal_controls[i].steering = u_opt(i * n_controls);
         }
 
-        if(verbose_){
+        if(cfg.verbose){
             std::cout << "Optimal control sequence (first 5 points): " << std::endl;
             for (size_t i = 0; i < std::min(size_t(5), optimal_controls.size()); ++i){
                 std::cout << "Control " << i << ": steering: " << optimal_controls[i].steering << std::endl;
             }
+        }
+
+        if(cfg.save_debug){
+            appendSingleRowToCSV(d, "d");
+            appendSingleRowToCSV(H, "H");
+            appendSingleRowToCSV(g, "g");
+            appendSingleRowToCSV(u_opt, "u_opt");
         }
 
         return optimal_controls;
@@ -323,27 +405,31 @@ class MPC {
     States predict_states(const State &x_0, const Controls &controls, const ModelMatrices &m){
         PROFC_NODE_
 
-        States predicted_states(n_horizon_);
+        States predicted_states(n_horizon);
 
-        Eigen::VectorXd x_pred(n_states_*n_horizon_);
-        Eigen::VectorXd u_vec(n_controls_*n_horizon_);
-        Eigen::VectorXd x0_vec(n_states_);
+        Eigen::VectorXd x_pred(n_states*n_horizon);
+        Eigen::VectorXd u_vec(n_controls*n_horizon);
+        Eigen::VectorXd x0_vec(n_states);
 
         x0_vec << x_0.y, x_0.vy, x_0.psi, x_0.r, x_0.delta, x_0.delta_dot;
         u_vec.setZero();
         for (size_t i = 0; i < controls.size(); ++i){
-            u_vec(i * n_controls_) = controls[i].steering;
+            u_vec(i * n_controls) = controls[i].steering;
         }
 
         x_pred.noalias() = m.T * x0_vec + m.S * u_vec + m.W;
 
-        for (size_t i = 0; i < n_horizon_; ++i){
-            predicted_states[i].y = x_pred(i * n_states_);
-            predicted_states[i].vy = x_pred(i * n_states_ + 1);
-            predicted_states[i].psi = x_pred(i * n_states_ + 2);
-            predicted_states[i].r = x_pred(i * n_states_ + 3);
-            predicted_states[i].delta = x_pred(i * n_states_ + 4);
-            predicted_states[i].delta_dot = x_pred(i * n_states_ + 5);
+        for (size_t i = 0; i < n_horizon; ++i){
+            predicted_states[i].y = x_pred(i * n_states);
+            predicted_states[i].vy = x_pred(i * n_states + 1);
+            predicted_states[i].psi = x_pred(i * n_states + 2);
+            predicted_states[i].r = x_pred(i * n_states + 3);
+            predicted_states[i].delta = x_pred(i * n_states + 4);
+            predicted_states[i].delta_dot = x_pred(i * n_states + 5);
+        }
+
+        if(cfg.save_debug){
+            appendSingleRowToCSV(x_pred, "x_pred");
         }
 
         return predicted_states;
@@ -355,33 +441,33 @@ class MPC {
     // Initialize size of the model matrices
     void initModelMatrices(ModelMatrices& m)
     {
-        m.x0.resize(n_states_);
-        m.x_ref.resize(n_states_ * n_horizon_);
-        m.x_prev.resize(n_states_ * n_horizon_);
-        m.u_prev.resize(n_controls_ * n_horizon_);
-        m.vx.resize(n_horizon_ + 1);
+        m.x0.resize(n_states);
+        m.x_ref.resize(n_states * n_horizon);
+        m.x_prev.resize(n_states * n_horizon);
+        m.u_prev.resize(n_controls * n_horizon);
+        m.vx.resize(n_horizon);
 
-        m.Ad.resize(n_horizon_);
-        m.Bd.resize(n_horizon_);
-        m.Cd.resize(n_horizon_);
+        m.Ad.resize(n_horizon);
+        m.Bd.resize(n_horizon);
+        m.Cd.resize(n_horizon);
 
-        for (size_t i = 0; i < n_horizon_; ++i){
-            m.Ad[i].resize(n_states_, n_states_);
-            m.Bd[i].resize(n_states_, n_controls_);
-            m.Cd[i].resize(n_states_);
+        for (size_t i = 0; i < n_horizon; ++i){
+            m.Ad[i].resize(n_states, n_states);
+            m.Bd[i].resize(n_states, n_controls);
+            m.Cd[i].resize(n_states);
         }
 
-        m.Aprod.resize(n_states_, n_states_);
-        m.wk.resize(n_states_);
+        m.Aprod.resize(n_states, n_states);
+        m.wk.resize(n_states);
 
-        m.S.resize(n_horizon_ * n_states_, n_horizon_ * n_controls_);
-        m.T.resize(n_horizon_ * n_states_, n_states_);
-        m.W.resize(n_horizon_ * n_states_);
+        m.S.resize(n_horizon * n_states, n_horizon * n_controls);
+        m.T.resize(n_horizon * n_states, n_states);
+        m.W.resize(n_horizon * n_states);
     }
     
     // Safety function for steering command
     double steeringSafety(const double &steering, const State &car_state){
-        if (isnan(steering))
+        if (std::isnan(steering))
             return 0.0;
         else if (car_state.vx < 0.3)
             return 0.0;
@@ -393,7 +479,7 @@ class MPC {
             return steering;
     }
 
-    // Debugging function to append a single row to a CSV file
+    // Debugging function to append a single row to a CSV file (vector of doubles)
     void appendSingleRowToCSV(const std::vector<double>& vector, std::string vectorname){
         std::string filename = cfg.ws_path + cfg.debug_path + "/" + vectorname + ".csv";
 
@@ -415,7 +501,7 @@ class MPC {
         std::cout << "[fuzzy_mpc] " << vectorname << " saved to " << filename << std::endl;
     }
 
-    // Debugging function to append a single row to a CSV file
+    // Debugging function to append a single row to a CSV file (Eigen vector)
     void appendSingleRowToCSV(const Eigen::VectorXd& vector, std::string vectorname){
         std::string filename = cfg.ws_path + cfg.debug_path + "/" + vectorname + ".csv";        
         // Open the CSV file in append mode
@@ -436,7 +522,33 @@ class MPC {
         std::cout << "[fuzzy_mpc] " << vectorname << " saved to " << filename << std::endl;
     }
 
-  public:   
+    // Debugging function to append a single row to a CSV file (matrix)
+    void appendSingleRowToCSV(const Eigen::MatrixXd& matrix, const std::string& vectorname){
+        const std::string filename = cfg.ws_path + cfg.debug_path + "/" + vectorname + ".csv";
+        std::ofstream file(filename, std::ios::app);
+
+        if (!file.is_open())
+        {
+            std::cerr << "Error: Could not open csv for writing: " << filename << std::endl;
+            return;
+        }
+
+        // Flatten matrix as a single CSV row in row-major order
+        for (Eigen::Index r = 0; r < matrix.rows(); ++r) {
+            for (Eigen::Index c = 0; c < matrix.cols(); ++c) {
+                file << matrix(r, c);
+
+                if (!(r == matrix.rows() - 1 && c == matrix.cols() - 1))
+                    file << ",";
+            }
+        }
+        file << "\n";
+
+        file.close();
+        std::cout << "[fuzzy_mpc] " << vectorname << " saved to " << filename << std::endl;
+    }
+
+  public:
     // Constructor
     MPC(): cfg(Config::getInstance()) {}
 
@@ -449,57 +561,54 @@ class MPC {
         model->initialize();
 
         // Save recurrent parameters
-        n_states_ = cfg.mpc.n_states;
-        n_controls_ = cfg.mpc.n_controls;
-        n_horizon_ = cfg.mpc.n_horizon;
-        n_planning_ = cfg.mpc.n_planning;
-        Ts_ = cfg.mpc.Ts;
-        disc_ = cfg.mpc.disc;
-        verbose_ = cfg.mpc.verbose;
+        n_horizon = cfg.mpc.n_horizon;
 
         // Initialize model matrices
         initModelMatrices(mpc_matrices);
         initModelMatrices(evaluator_matrices);
 
         // Initialize weights matrices
-        q_diag.resize(n_states_ * n_horizon_);
-        R.resize(n_controls_, n_controls_);
-        R_.resize(n_horizon_ * n_controls_, n_horizon_ * n_controls_);
+        q_diag.resize(n_states * n_horizon);
+        R.resize(n_controls, n_controls);
+        Rd.resize(n_controls, n_controls);
+        R_.resize(n_horizon * n_controls, n_horizon * n_controls);
+        Rd_.resize(n_horizon * n_controls, n_horizon * n_controls);
+        D.resize(n_horizon * n_controls, n_horizon * n_controls);
 
-        createWeights(true);
+        // Initialize solver matrices
+        H.resize(n_horizon * n_controls, n_horizon * n_controls);
+        g.resize(n_horizon * n_controls);
+        u_opt.resize(n_horizon * n_controls);
+        d.resize(n_horizon * n_controls);
+
+        createWeights();
 
         firstIteration = true;
 
         // TODO: This as a parameter
-        double max_steering = 30.0 * M_PI / 180.0; // rad
+        double max_steering = 25.0 * M_PI / 180.0; // rad
         double max_steering_dot = 80.0 * M_PI / 180.0; // rad/s
 
-        solver.setParams(max_steering, max_steering_dot, n_states_, n_horizon_, n_controls_, verbose_);
+        solver.setParams(max_steering, max_steering_dot, n_states, n_horizon, n_controls, cfg.verbose);
         std::cout << "MPC initialized" << std::endl;
     }
 
     ~MPC() = default;
 
-    void compute_mpc(const State &car_state, const States &local_ref, const States &x_prev, const Controls &u_prev, States &predicted_states, Controls &optimal_controls)
+    void compute_mpc(const State &car_state, const Control u_prev_iter, const States &local_ref, const States &x_prev, const Controls &u_prev, States &predicted_states, Controls &optimal_controls)
     {
         PROFC_NODE_
 
-        if (verbose_){
+        if (cfg.verbose){
             std::cout << "Current state: y: " << car_state.y << ", vy: " << car_state.vy << ", psi: " << car_state.psi << ", r: " << car_state.r << ", delta: " << car_state.delta << ", delta_dot: " << car_state.delta_dot << std::endl;
             std::cout << "Size of local reference: " << local_ref.size() << std::endl;
             std::cout << "Size of previous states: " << x_prev.size() << std::endl;
             std::cout << "Size of previous controls: " << u_prev.size() << std::endl;
         }
 
-        // Check if initial state is over
-        if(init_state && car_state.vx > cfg.mpc.vx_to_finish_init){
-            init_state = false;
-            createWeights(false);
-        }
-
-        createReference(car_state, local_ref);
+        createReference(local_ref);
         createModelMatrices(car_state, x_prev, u_prev, mpc_matrices);
-        optimal_controls = solve(mpc_matrices);
+        optimal_controls = solve(mpc_matrices, u_prev_iter);
         predicted_states = predict_states(car_state, optimal_controls, mpc_matrices);
 
         // Ensure safety
@@ -521,6 +630,6 @@ class MPC {
 
     void update_config()
     {
-        createWeights(init_state);
+        createWeights();
     }
 };

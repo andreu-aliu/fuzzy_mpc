@@ -28,7 +28,7 @@ public:
 
         // Resize matreix for safety
         Ad.resize(6, 6);
-        Bd.resize(6, 1);
+        Bd.resize(6, 2);
         Cd.resize(6);
 
         // States
@@ -54,29 +54,29 @@ public:
         const double Df = cfg.car.Df;
         const double Dr = cfg.car.Dr;
 
-        const double damp_  = 0.5;
-        const double omega_ = 16.0;
+        const double damp_  = cfg.car.steering_damp;
+        const double omega_ = cfg.car.steering_omega;
 
         const double Cf_ = Df * Cf * Bf;
         const double Cr_ = Dr * Cr * Br;
 
         const double Ts_ = cfg.mpc.Ts;
-        const double vx_safe = std::max(vx, 0.1);
+        const double vx_safe = std::max(vx, 1.0);
 
         // Continuous A matrix
         Eigen::Matrix<double,6,6> A;
 
         A << 0, cos(psi), vx*cos(psi), 0, 0, 0,
-            0, (Cf_ * cos(delta) + Cr_) / (m_ * vx), 0, ((lf_ * Cf_ * cos(delta) - lr_ * Cr_) / (m_ * vx)) - vx, -Cf_ * cos(delta) / m_, 0,
+            0, -(Cf_ * cos(delta) + Cr_) / (m_ * vx_safe), 0, -((lf_ * Cf_ * cos(delta) - lr_ * Cr_) / (m_ * vx_safe)) + vx, Cf_ * cos(delta) / m_, 0,
             0, 0, 0, 1, 0, 0,
-            0, (lf_ * Cf_ * cos(delta) - lr_ * Cr_) / (Iz_ * vx), 0, (lf_ * lf_ * Cf_ * cos(delta) + lr_ * lr_ * Cr_) / (Iz_ * vx), -lf_ * Cf_ * cos(delta) / Iz_, 0, 
+            0, -(lf_ * Cf_ * cos(delta) - lr_ * Cr_) / (Iz_ * vx_safe), 0, -(lf_ * lf_ * Cf_ * cos(delta) + lr_ * lr_ * Cr_) / (Iz_ * vx_safe), lf_ * Cf_ * cos(delta) / Iz_, 0, 
             0, 0, 0, 0, 0, 1,
             0, 0, 0, 0, - omega_ * omega_, - 2.0 * damp_ * omega_;
 
         // Continuous B matrix
-        Eigen::Matrix<double,6,1> B;
-
-        B << 0, 0, 0, 0, 0, omega_ * omega_;
+        Eigen::Matrix<double,6,2> B;
+        B.setZero();
+        B(5, 0) = omega_ * omega_;
 
         // Discretization (Euler)
         Eigen::Matrix<double,6,6> I = Eigen::Matrix<double,6,6>::Identity();

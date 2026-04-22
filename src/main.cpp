@@ -20,6 +20,7 @@ class Manager : public rclcpp::Node{
     States previous_states;
     Controls previous_controls;
     Controls optimal_controls;
+    Control applied_control;
 
     // Publishers
     rclcpp::Publisher<cat_msgs::msg::CarCommands>::SharedPtr pubSteering;
@@ -36,6 +37,7 @@ class Manager : public rclcpp::Node{
     // Flags
     bool planner_recieved = false;
     bool dynamic_recieved = false;
+    bool first_iteration = true;
   
   public:
     Manager(): Node("fuzzy_mpc", 
@@ -83,12 +85,12 @@ class Manager : public rclcpp::Node{
 
         Config& cfg = Config::getInstance();
 
-        if(cfg.mpc.verbose) std::cout << "--------  State callback   ------------------------------" << std::endl;
+        if(cfg.verbose) std::cout << "--------  State callback   ------------------------------" << std::endl;
         
         State global_state  =  stateMsg(msg);     
 
         if(planner_recieved){
-            if(cfg.mpc.verbose) std::cout << "Planner received, running MPC" << std::endl;
+            if(cfg.verbose) std::cout << "Planner received, running MPC" << std::endl;
             
             // Get reference in global coordinates
             std::vector<State> global_ref = build_reference_global(global_trajectory, global_state, cfg.mpc.Ts, cfg.mpc.n_horizon);
@@ -103,25 +105,38 @@ class Manager : public rclcpp::Node{
                 local_ref[i] = global_to_local_state(global_ref[i], global_ref[0]);
             }
 
+            // Publish reference visualization
+            pubReferencePath->publish(localPathMsg(local_ref, local_state));
+
             // MPC solution
+            if(first_iteration){
+                predicted_states = local_ref;
+                optimal_controls = std::vector<Control>(cfg.mpc.n_horizon, Control{0.0, 0.0});
+                applied_control = optimal_controls[0];
+                first_iteration = false;
+            }
             previous_states = predicted_states;
             previous_controls = optimal_controls;
-            mpc.compute_mpc(local_state, local_ref, previous_states, previous_controls, predicted_states, optimal_controls);
+            mpc.compute_mpc(local_state, applied_control, local_ref, previous_states, previous_controls, predicted_states, optimal_controls);
+
+            if(!is_valid(predicted_states) || !is_valid(optimal_controls)){                
+                first_iteration = true;
+                RCLCPP_ERROR(get_logger(), "MPC: Invalid solution");
+            }
 
             // Publish commands
-            double steering = optimal_controls[0].steering;
+            applied_control = optimal_controls[0];
+            double steering = applied_control.steering;
             pubSteering->publish(steerMsg(steering));
 
             // Publish model error
 
 
-            // Publish visualization
-            pubReferencePath->publish(localPathMsg(local_ref, local_state));
+            // Publish prediction visualization
             pubPredictedPath->publish(localPathMsg(predicted_states, local_state));
 
-
         }else{
-            if(cfg.mpc.verbose)
+            if(cfg.verbose)
                 RCLCPP_WARN(get_logger(), "MPC: No planner received yet");
         }
     }
@@ -130,11 +145,11 @@ class Manager : public rclcpp::Node{
         PROFC_NODE_
         Config& cfg = Config::getInstance();
 
-        if(cfg.mpc.verbose) std::cout << "Planner callback" << std::endl;
+        if(cfg.verbose) std::cout << "Planner callback" << std::endl;
 
         global_trajectory = planMsg(msg);
 
-        if(global_trajectory.size() < cfg.mpc.n_planning){
+        if(global_trajectory.size() < 2){
             RCLCPP_ERROR(get_logger(), "LTV MPC: Too short, Planner");
             return;
         }
@@ -143,6 +158,25 @@ class Manager : public rclcpp::Node{
     }
 
     // TODO: Dynamic reconfigure callback
+
+    // Aux functions
+    bool is_valid(const std::vector<State> &states){
+        for(const auto& s : states){
+            if(!std::isfinite(s.x) || !std::isfinite(s.y) || !std::isfinite(s.psi) || !std::isfinite(s.vx) || !std::isfinite(s.vy) || !std::isfinite(s.r) || !std::isfinite(s.delta) || !std::isfinite(s.delta_dot)){
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool is_valid(const std::vector<Control> &controls){
+        for(const auto& c : controls){
+            if(!std::isfinite(c.steering) || !std::isfinite(c.mz)){
+                return false;
+            }
+        }
+        return true;
+    }
 
 };
 
