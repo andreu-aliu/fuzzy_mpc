@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 
 .vscode/
+.codex
 
 # Ignore all CSV files inside debug/ (top-level and subfolders)
 debug/*.csv

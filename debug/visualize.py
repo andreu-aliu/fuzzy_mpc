@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider
 
 def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_mpc/debug",
                         n_inputs=2, n_states=6, n_horizon=60, row=-1, state_names=None, input_names=None,
@@ -41,29 +42,49 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
     else:
         input_names = input_names[:n_inputs]
 
-    # Read CSV files
-    delta_u_opt = pd.read_csv(folder / "u_opt.csv", header=None).iloc[row].values
-    pred_states = pd.read_csv(folder / "x_pred.csv", header=None).iloc[row].values
-    x_ref = pd.read_csv(folder / "x_ref.csv", header=None).iloc[row].values
-    x0 = pd.read_csv(folder / "x0.csv", header=None).iloc[row].values
+    def _read_csv_if_exists(path: Path):
+        if not path.exists():
+            return None
+        return pd.read_csv(path, header=None).values
 
-    prev_states = None
-    prev_controls = None
+    # Load all rows once; the slider will pick which row to display.
+    u_opt_raw = _read_csv_if_exists(folder / "u_opt.csv")
+    pred_states_raw = _read_csv_if_exists(folder / "x_pred.csv")
+    x_ref_raw = _read_csv_if_exists(folder / "x_ref.csv")
+    x0_raw = _read_csv_if_exists(folder / "x0.csv")  # optional (not plotted)
+
+    if u_opt_raw is None or pred_states_raw is None or x_ref_raw is None:
+        raise FileNotFoundError("Missing required CSV(s): u_opt.csv, x_pred.csv, x_ref.csv")
+
+    x_prev_raw = None
+    u_prev_raw = None
     if show_prev:
-        x_prev_path = folder / "x_prev.csv"
-        u_prev_path = folder / "u_prev.csv"
-        if x_prev_path.exists():
-            prev_states = pd.read_csv(x_prev_path, header=None).iloc[row].values
-        if u_prev_path.exists():
-            prev_controls = pd.read_csv(u_prev_path, header=None).iloc[row].values
-    
-    # Reshape vectors
-    u_opt = delta_u_opt.reshape(n_horizon, n_inputs)
-    pred_st = pred_states.reshape(n_horizon, n_states)
-    ref_st = x_ref.reshape(n_horizon, n_states)
-    prev_st = prev_states.reshape(n_horizon, n_states) if prev_states is not None else None
-    prev_u = prev_controls.reshape(n_horizon, n_inputs) if prev_controls is not None else None
-    
+        x_prev_raw = _read_csv_if_exists(folder / "x_prev.csv")
+        u_prev_raw = _read_csv_if_exists(folder / "u_prev.csv")
+
+    # Slider max is based on how many rows exist in the CSVs.
+    n_rows = min(
+        u_opt_raw.shape[0],
+        pred_states_raw.shape[0],
+        x_ref_raw.shape[0],
+        x0_raw.shape[0] if x0_raw is not None else u_opt_raw.shape[0],
+        x_prev_raw.shape[0] if x_prev_raw is not None else u_opt_raw.shape[0],
+        u_prev_raw.shape[0] if u_prev_raw is not None else u_opt_raw.shape[0],
+    )
+    if n_rows <= 0:
+        raise ValueError("CSV files have no rows to visualize")
+
+    if row < 0:
+        row = n_rows - 1
+    row = int(np.clip(row, 0, n_rows - 1))
+
+    # Pre-reshape into 3D arrays for quick slider updates.
+    u_opt_all = u_opt_raw[:n_rows].reshape(n_rows, n_horizon, n_inputs)
+    pred_st_all = pred_states_raw[:n_rows].reshape(n_rows, n_horizon, n_states)
+    ref_st_all = x_ref_raw[:n_rows].reshape(n_rows, n_horizon, n_states)
+    prev_st_all = x_prev_raw[:n_rows].reshape(n_rows, n_horizon, n_states) if x_prev_raw is not None else None
+    prev_u_all = u_prev_raw[:n_rows].reshape(n_rows, n_horizon, n_inputs) if u_prev_raw is not None else None
+
     total_plots = n_states + n_inputs
     horizon_range = np.arange(n_horizon)
     fig_height = max(2.8 * total_plots, 6)
@@ -76,25 +97,46 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
     )
     axes = axes.flatten()
 
+    fig.suptitle(f"CSV row: {row}/{n_rows - 1}", y=0.995)
+
+    ref_lines = []
+    pred_lines = []
+    prev_state_lines = []
+
     # Plot each state on its own subplot.
     for i in range(n_states):
         state_name = state_names[i]
-        axes[i].plot(horizon_range, ref_st[:, i], 'o-', label=f'Ref {state_name}', linewidth=2)
-        if prev_st is not None:
-            axes[i].plot(horizon_range, prev_st[:, i], 'x:', label=f'Prev {state_name}', linewidth=2)
-        axes[i].plot(horizon_range, pred_st[:, i], 's--', label=f'Pred {state_name}', linewidth=2)
+        (ref_line,) = axes[i].plot(horizon_range, ref_st_all[row, :, i], 'o-', label=f'Ref {state_name}', linewidth=2)
+        ref_lines.append(ref_line)
+
+        if prev_st_all is not None:
+            (prev_line,) = axes[i].plot(horizon_range, prev_st_all[row, :, i], 'x:', label=f'Prev {state_name}', linewidth=2)
+        else:
+            prev_line = None
+        prev_state_lines.append(prev_line)
+
+        (pred_line,) = axes[i].plot(horizon_range, pred_st_all[row, :, i], 's--', label=f'Pred {state_name}', linewidth=2)
+        pred_lines.append(pred_line)
         axes[i].set_ylabel(state_name)
         axes[i].set_title(f"{state_name}: Ref / Prev / Pred")
         axes[i].legend()
         axes[i].grid(True, alpha=0.3)
 
+    input_lines = []
+    prev_input_lines = []
+
     # Plot each control action on its own subplot below the states.
     for i in range(n_inputs):
         input_name = input_names[i]
         axis = axes[n_states + i]
-        axis.plot(horizon_range, u_opt[:, i], 'o-', label=f'u_opt {input_name}', linewidth=2)
-        if prev_u is not None:
-            axis.plot(horizon_range, prev_u[:, i], 'x:', label=f'u_prev {input_name}', linewidth=2)
+        (u_line,) = axis.plot(horizon_range, u_opt_all[row, :, i], 'o-', label=f'u_opt {input_name}', linewidth=2)
+        input_lines.append(u_line)
+
+        if prev_u_all is not None:
+            (u_prev_line,) = axis.plot(horizon_range, prev_u_all[row, :, i], 'x:', label=f'u_prev {input_name}', linewidth=2)
+        else:
+            u_prev_line = None
+        prev_input_lines.append(u_prev_line)
         axis.set_ylabel(input_name)
         axis.set_title(f"{input_name}: u_opt / u_prev")
         axis.legend()
@@ -102,8 +144,40 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
 
     axes[-1].set_xlabel("Horizon Step")
     
-    plt.tight_layout()
+    # Slider: select which CSV row/iteration to visualize.
+    fig.subplots_adjust(bottom=0.06)
+    ax_slider = fig.add_axes([0.15, 0.015, 0.7, 0.02])
+    row_slider = Slider(
+        ax=ax_slider,
+        label="Row",
+        valmin=0,
+        valmax=n_rows - 1,
+        valinit=row,
+        valstep=1,
+        valfmt="%0.0f",
+    )
+
+    def _update_plot(selected_row):
+        r = int(selected_row)
+        fig.suptitle(f"CSV row: {r}/{n_rows - 1}", y=0.995)
+
+        for i in range(n_states):
+            ref_lines[i].set_ydata(ref_st_all[r, :, i])
+            pred_lines[i].set_ydata(pred_st_all[r, :, i])
+            if prev_state_lines[i] is not None:
+                prev_state_lines[i].set_ydata(prev_st_all[r, :, i])
+
+        for i in range(n_inputs):
+            input_lines[i].set_ydata(u_opt_all[r, :, i])
+            if prev_input_lines[i] is not None:
+                prev_input_lines[i].set_ydata(prev_u_all[r, :, i])
+
+        fig.canvas.draw_idle()
+
+    row_slider.on_changed(_update_plot)
+
+    fig.tight_layout(rect=[0, 0.04, 1, 0.985])
     plt.show()
 
 if __name__ == "__main__":
-    visualize_mpc_debug(n_inputs=2, n_states=6, n_horizon=60, row=3)
+    visualize_mpc_debug(n_inputs=2, n_states=6, n_horizon=60, row=0)

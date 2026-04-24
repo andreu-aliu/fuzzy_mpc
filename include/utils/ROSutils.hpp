@@ -221,7 +221,6 @@ nav_msgs::msg::Path localPathMsg(
 
         path_msg.poses.push_back(pose);
     }
-    std::cout << "Path message created with " << path_msg.poses.size() << " poses." << std::endl;
     return path_msg;
 }
 

@@ -113,7 +113,7 @@ class Manager : public rclcpp::Node{
                 predicted_states = local_ref;
                 optimal_controls = std::vector<Control>(cfg.mpc.n_horizon, Control{0.0, 0.0});
                 applied_control = optimal_controls[0];
-                first_iteration = false;
+                // first_iteration = false;
             }
             previous_states = predicted_states;
             previous_controls = optimal_controls;

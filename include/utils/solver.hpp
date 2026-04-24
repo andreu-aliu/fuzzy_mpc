@@ -28,17 +28,17 @@ class Solver{
         T_ = T;
         x0_ = x0;
 
-        double *H_pointer = new double[n_horizon_ * n_horizon_];
-        double *g_pointer = new double[n_horizon_];
-        int *idxb = new int[n_horizon_];
-        double *lb_pointer = new double[n_horizon_];
-        double *ub_pointer = new double[n_horizon_];
-        double *C_pointer = new double[n_horizon_ * n_states_ * n_horizon_];
+        double *H_pointer = new double[nv_ * nv_];
+        double *g_pointer = new double[nv_];
+        int *idxb = new int[nb_];
+        double *lb_pointer = new double[nb_];
+        double *ub_pointer = new double[nb_];
+        double *C_pointer = new double[ng_ * nv_];
         double *lg_pointer = new double[n_horizon_ * n_states_];
         double *ug_pointer = new double[n_horizon_ * n_states_];
 
         fillBounds();
-        for (int i = 0; i < n_horizon_; ++i)
+        for (int i = 0; i < nb_; ++i)
             idxb[i] = i;
 
         translateMatrixToArray(H_, H_pointer);
@@ -196,7 +196,7 @@ class Solver{
         free(qp_sol_mem);
         free(ipm_arg_mem);
         free(ipm_mem);
-        free(v);
+        delete[] v;
 
         delete[] H_pointer;
         delete[] g_pointer;
@@ -205,6 +205,7 @@ class Solver{
         delete[] ub_pointer;
         delete[] lg_pointer;
         delete[] ug_pointer;
+        delete[] idxb;
 
     }
 
@@ -212,26 +213,28 @@ class Solver{
     
     void setParams(const double max_steering,
                    const double max_steering_dot,
+                   const double max_mz,
                    const int n_states,
                    const int n_horizon,
                    const int n_controls,
                    const bool verbose){
         max_steering_ = max_steering;
         max_steering_dot_ = max_steering_dot;
+        max_mz_ = max_mz;
         n_states_ = n_states;
         n_horizon_ = n_horizon;
         n_controls_ = n_controls;
         verbose_ = false; //verbose;
 
-        lb_.resize(n_horizon_);
-        ub_.resize(n_horizon_);
+        lb_.resize(n_horizon_ * n_controls_);
+        ub_.resize(n_horizon_ * n_controls_);
         lg_.resize(n_horizon_ * n_states_);
         ug_.resize(n_horizon_ * n_states_);
-        delta_u_opt_.resize(n_horizon_);
+        delta_u_opt_.resize(n_horizon_ * n_controls_);
 
-        nv_ = n_horizon_;             // Number of variables
+        nv_ = n_horizon_ * n_controls_; // Number of variables
         ne_ = 0;                      // Number of equality constraints
-        nb_ = n_horizon_;             // Number of box constraints
+        nb_ = nv_;                    // Number of box constraints
         ng_ = n_horizon_ * n_states_; // Number of general constraints
         nsb_ = 0;                     // Number of soft box constraints
         nsg_ = 0;                     // Number of soft general constraints
@@ -251,8 +254,11 @@ class Solver{
             X_max[n_states_ * i + 5] = max_steering_dot_;
 
             // Fill controls constraints
-            ub_[i] = max_steering_;
-            lb_[i] = -max_steering_;
+            ub_[n_controls_ * i] = max_steering_;
+            ub_[n_controls_ * i + 1] = max_mz_;
+
+            lb_[n_controls_ * i] = -max_steering_;
+            lb_[n_controls_ * i + 1] = -max_mz_;
         }
         VectorXd c0(n_horizon_ * n_states_);
         c0 = T_ * x0_;
@@ -280,7 +286,7 @@ class Solver{
     }
 
   private:
-    double max_steering_, max_steering_dot_;
+    double max_steering_, max_steering_dot_, max_mz_;
     int n_states_, n_horizon_, n_controls_;
     int nv_, ne_, nb_, ng_, nsb_, nsg_;
     bool verbose_;

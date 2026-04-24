@@ -234,9 +234,11 @@ class MPC {
 
             model->getDiscreteMatrices(prev_state, prev_u, m.vx[i], m.Ad[i], m.Bd[i], m.Cd[i]);
 
-            std::cout << "Ad[" << i << "]:\n" << m.Ad[i] << std::endl;
-            std::cout << "Bd[" << i << "]:\n" << m.Bd[i] << std::endl;
-            std::cout << "Cd[" << i << "]:\n" << m.Cd[i].transpose() << std::endl;
+            if(cfg.verbose){
+                std::cout << "Ad[" << i << "]:\n" << m.Ad[i] << std::endl;
+                std::cout << "Bd[" << i << "]:\n" << m.Bd[i] << std::endl;
+                std::cout << "Cd[" << i << "]:\n" << m.Cd[i].transpose() << std::endl;
+            }
 
             // Sanity check
             if(!m.Ad[i].allFinite() || !m.Bd[i].allFinite() || !m.Cd[i].allFinite()){
@@ -244,8 +246,7 @@ class MPC {
             }
         }
 
-
-        // Fill matrix T // TODO: optimize
+        // Fill matrix T
         m.T.setZero();
         for (int i = 0; i < n_horizon; ++i)
         {
@@ -325,24 +326,6 @@ class MPC {
     {
         PROFC_NODE_
 
-        std::cout << "q_diag min/max: "
-          << q_diag.minCoeff() << " / " << q_diag.maxCoeff() << std::endl;
-
-        std::cout << "R_ min/max: "
-                << R_.minCoeff() << " / " << R_.maxCoeff() << std::endl;
-
-        std::cout << "S min/max: "
-                << m.S.minCoeff() << " / " << m.S.maxCoeff() << std::endl;
-
-        std::cout << "T min/max: "
-                << m.T.minCoeff() << " / " << m.T.maxCoeff() << std::endl;
-
-        std::cout << "W min/max: "
-                << m.W.minCoeff() << " / " << m.W.maxCoeff() << std::endl;
-
-        std::cout << "x0: " << m.x0.transpose() << std::endl;
-        std::cout << "u_prev: " << m.u_prev.transpose() << std::endl;
-
         Eigen::DiagonalMatrix<double, Eigen::Dynamic> Q(q_diag);
 
         d.setZero();
@@ -372,12 +355,12 @@ class MPC {
         }
 
         // Solution without constraints
-        u_opt = H.ldlt().solve(-g); // Cholesk variant (for positive and negative defined matrices)
+            // u_opt = H.ldlt().solve(-g); // Cholesk variant (for positive and negative defined matrices)
             // u_opt = H.llt().solve(-g); // Cholesky decomposition (need to find if H is positive define)
 
         // Solution with constraints using HPIPM solver
-            // solver.solve(H, g, S, T, x0);
-            // u_opt = solver.getSolution();
+            solver.solve(H, g, m.S, m.T, m.x0);
+            u_opt = solver.getSolution();
 
         Controls optimal_controls(n_horizon);
         for (size_t i = 0; i < n_horizon; ++i){
@@ -552,8 +535,8 @@ class MPC {
     // Constructor
     MPC(): cfg(Config::getInstance()) {}
 
-    void initialize(){
-        
+    void initialize()
+    {    
         std::cout << "Initializing MPC..." << std::endl;
 
         // Model
@@ -588,8 +571,9 @@ class MPC {
         // TODO: This as a parameter
         double max_steering = 25.0 * M_PI / 180.0; // rad
         double max_steering_dot = 80.0 * M_PI / 180.0; // rad/s
+        double max_mz = 1000.0;
 
-        solver.setParams(max_steering, max_steering_dot, n_states, n_horizon, n_controls, cfg.verbose);
+        solver.setParams(max_steering, max_steering_dot, max_mz, n_states, n_horizon, n_controls, cfg.verbose);
         std::cout << "MPC initialized" << std::endl;
     }
 
