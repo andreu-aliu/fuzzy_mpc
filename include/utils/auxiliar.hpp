@@ -3,6 +3,7 @@
 #include <vector>
 #include <cmath>
 #include <limits>
+#include <as_lib/utils/Profiler.hpp>
 
 // ==============================
 // DATA STRUCTURES
@@ -28,7 +29,6 @@ struct TrajectoryPoint{
     double x;
     double y;
     double s;
-    double psi;
     double k;
     double vx;
     double l;
@@ -82,24 +82,33 @@ inline double interp1(
     const std::vector<double>& ys,
     double xq)
 {
+    if (xs.empty() || ys.empty() || xs.size() != ys.size()) {
+        throw std::runtime_error("interp1: invalid input vectors");
+    }
+
     if (xq <= xs.front()) return ys.front();
     if (xq >= xs.back())  return ys.back();
 
-    for (size_t i = 0; i < xs.size() - 1; ++i){
-        if (xq >= xs[i] && xq <= xs[i+1]){
-            double t = (xq - xs[i]) / (xs[i+1] - xs[i]);
-            return ys[i] + t * (ys[i+1] - ys[i]);
+    for (size_t i = 0; i + 1 < xs.size(); ++i) {
+        if (xq >= xs[i] && xq <= xs[i + 1]) {
+            double ds = xs[i + 1] - xs[i];
+
+            if (std::abs(ds) < 1e-9) {
+                return ys[i];
+            }
+
+            double t = (xq - xs[i]) / ds;
+            return ys[i] + t * (ys[i + 1] - ys[i]);
         }
     }
 
-    return ys.back(); // fallback
+    return ys.back();
 }
 
 
 // ==============================
 // build_reference_global
 // ==============================
-// Equivalent to MATLAB build_reference_global
 // Output: vector<State>
 inline std::vector<State> build_reference_global(
     const Trajectory& traj,
@@ -107,58 +116,115 @@ inline std::vector<State> build_reference_global(
     double dt,
     int Np)
 {
+    PROFC_NODE_
+
     std::vector<State> X_ref(Np);
 
-    // Extract arrays for interpolation
-    std::vector<double> s_vec, x_vec, y_vec, psi_vec, vx_vec;
-    s_vec.reserve(traj.size());
-    x_vec.reserve(traj.size());
-    y_vec.reserve(traj.size());
-    psi_vec.reserve(traj.size());
-    vx_vec.reserve(traj.size());
-
-    for (const auto& p : traj){
-        s_vec.push_back(p.s);
-        x_vec.push_back(p.x);
-        y_vec.push_back(p.y);
-        psi_vec.push_back(p.psi);   // ✔ correct now
-        vx_vec.push_back(p.vx);
+    if (traj.size() < 2) {
+        std::cerr << "Warning: Trajectory has less than 2 points. Returning empty reference." << std::endl;
+        return X_ref; // not enough data
     }
 
+    // 1. Precompute psi from geometry
+    std::vector<double> psi_vec(traj.size());
+
+    for (size_t i = 0; i < traj.size(); ++i)
+    {
+        double dx, dy;
+
+        if (i == 0) {
+            dx = traj[i+1].x - traj[i].x;
+            dy = traj[i+1].y - traj[i].y;
+        }
+        else if (i == traj.size() - 1) {
+            dx = traj[i].x - traj[i-1].x;
+            dy = traj[i].y - traj[i-1].y;
+        }
+        else {
+            dx = traj[i+1].x - traj[i-1].x;
+            dy = traj[i+1].y - traj[i-1].y;
+        }
+
+        double norm = std::hypot(dx, dy);
+
+        if (norm < 1e-9) {
+            psi_vec[i] = (i > 0) ? psi_vec[i-1] : 0.0;
+        } else {
+            psi_vec[i] = std::atan2(dy, dx);
+        }
+    }
+
+    // 2. Find starting point
     int idx = find_closest_point(traj, Xg.x, Xg.y);
     double s_i = traj[idx].s;
 
-    for (int i = 0; i < Np; ++i){
+    size_t k = static_cast<size_t>(idx);
 
-        if (s_i > s_vec.back())
-            s_i = s_vec.back();
+    // 3. Build reference
+    for (int i = 0; i < Np; ++i)
+    {
+        // Clamp to end
+        if (s_i >= traj.back().s)
+        {
+            const auto& p = traj.back();
 
-        double vx_i  = interp1(s_vec, vx_vec, s_i);
-        double x_t   = interp1(s_vec, x_vec,  s_i);
-        double y_t   = interp1(s_vec, y_vec,  s_i);
-        double psi_t = interp1(s_vec, psi_vec, s_i);
+            X_ref[i] = {
+                p.x,
+                p.y,
+                psi_vec.back(),
+                p.vx,
+                0.0, 
+                p.r,
+                0.0, 0.0
+            };
+            continue;
+        }
 
-        s_i += vx_i * dt;
+        // Advance cursor
+        while (k + 1 < traj.size() && traj[k + 1].s < s_i)
+            ++k;
 
-        State Xi{};
-        Xi.x = x_t;
-        Xi.y = y_t;
-        Xi.psi = psi_t;
-        Xi.vx = vx_i;
+        const auto& p0 = traj[k];
+        const auto& p1 = traj[std::min(k + 1, traj.size() - 1)];
 
-        // rest zero (same as MATLAB)
-        Xi.vy = 0.0;
-        Xi.r  = 0.0;
-        Xi.delta = 0.0;
-        Xi.delta_dot = 0.0;
-        // Xi.mz = 0.0;
+        double ds = p1.s - p0.s;
 
-        X_ref[i] = Xi;
+        double t = 0.0;
+        if (std::abs(ds) > 1e-9) {
+            t = (s_i - p0.s) / ds;
+            t = std::clamp(t, 0.0, 1.0);
+        }
+
+        // Interpolate position and velocity
+        double x_t  = p0.x  + t * (p1.x  - p0.x);
+        double y_t  = p0.y  + t * (p1.y  - p0.y);
+        double vx_t = p0.vx + t * (p1.vx - p0.vx);
+        double r_t  = p0.r + t * (p1.r - p0.r);
+
+        // Interpolate angle (safe wrap)
+        double dpsi = wrapToPi(psi_vec[k+1] - psi_vec[k]);
+        double psi_t = wrapToPi(psi_vec[k] + t * dpsi);
+
+        // Build state
+        X_ref[i] = {
+            x_t,
+            y_t,
+            psi_t,
+            vx_t,
+            0.0, 
+            r_t,
+            0.0, 0.0
+        };
+
+        // Advance along trajectory
+        s_i += vx_t * dt;
+
+        if (!std::isfinite(s_i))
+            s_i = p0.s;
     }
 
     return X_ref;
 }
-
 
 // ==============================
 // global_to_local_state
@@ -197,7 +263,6 @@ inline State global_to_local_state(
     // Actuator states
     X_local.delta     = X_global.delta;
     X_local.delta_dot = X_global.delta_dot;
-    // X_local.mz = X_global.mz;
 
     return X_local;
 }

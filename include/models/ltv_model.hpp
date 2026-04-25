@@ -23,7 +23,6 @@ public:
         Eigen::VectorXd& Cd
     ) const override
     {
-        PROFC_NODE_;
         Config& cfg = Config::getInstance();
 
         // Resize matreix for safety

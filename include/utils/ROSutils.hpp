@@ -90,7 +90,8 @@ inline void fill_config(Config& cfg, rclcpp::Node* node)
 }
 
 // From ROS
-State stateMsg(const cat_msgs::msg::CarState::SharedPtr& msg){
+State stateMsg(const cat_msgs::msg::CarState::SharedPtr& msg)
+{
 
     State car_state;
 
@@ -105,7 +106,8 @@ State stateMsg(const cat_msgs::msg::CarState::SharedPtr& msg){
     return car_state;
 }
 
-std::vector<TrajectoryPoint> planMsg(const cat_msgs::msg::ObjectiveArrayCurv::SharedPtr& msg) {
+std::vector<TrajectoryPoint> planMsg(const cat_msgs::msg::ObjectiveArrayCurv::SharedPtr& msg) 
+{
     Config& cfg = Config::getInstance();
 
     std::vector<TrajectoryPoint> planner;
@@ -128,7 +130,8 @@ std::vector<TrajectoryPoint> planMsg(const cat_msgs::msg::ObjectiveArrayCurv::Sh
     return planner;
 }
 
-Eigen::VectorXd velsMsg(const cat_msgs::msg::CarVelocityArray::SharedPtr& msg) {
+Eigen::VectorXd velsMsg(const cat_msgs::msg::CarVelocityArray::SharedPtr& msg) 
+{
     Config& cfg = Config::getInstance();
     const size_t n = msg->velocities.size();
 
@@ -145,14 +148,16 @@ Eigen::VectorXd velsMsg(const cat_msgs::msg::CarVelocityArray::SharedPtr& msg) {
 }
 
 // To ROS
-inline cat_msgs::msg::CarCommands steerMsg(const double& steering_cmd){
+inline cat_msgs::msg::CarCommands steerMsg(const double& steering_cmd)
+{
     cat_msgs::msg::CarCommands cmd;
     cmd.header.stamp = rclcpp::Clock().now();
     cmd.steering = steering_cmd;
     return cmd;
 }
 
-visualization_msgs::msg::MarkerArray headingMsg(const Eigen::MatrixXd &state){
+visualization_msgs::msg::MarkerArray headingMsg(const Eigen::MatrixXd &state)
+{
     
     size_t id = 0;
 

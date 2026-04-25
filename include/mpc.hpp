@@ -40,6 +40,7 @@ struct ModelMatrices{
 
     // Intermediate calculations
     Eigen::MatrixXd Aprod;
+    Eigen::MatrixXd temp6x6;
     Eigen::VectorXd wk;
 
     // For prediction
@@ -188,47 +189,39 @@ class MPC {
 
         // x_0 vector
         m.x0 << car_state.y,        // y
-              car_state.vy,         // vy
-              car_state.psi,        // phi
-              car_state.r,          // r
-              car_state.delta,      // delta
-              car_state.delta_dot;  // delta dot
+                car_state.vy,         // vy
+                car_state.psi,        // phi
+                car_state.r,          // r
+                car_state.delta,      // delta
+                car_state.delta_dot;  // delta dot
 
-        // x_prev vector
+        {PROFC_NODE("createModelMatrices_first")
         for (size_t i = 0; i < n_horizon; ++i){
+
             if (i < prev_states.size()){
+                // x_prev vector
                 m.x_prev.segment(i * n_states, n_states) << prev_states[i].y,       // y
                                                             prev_states[i].vy,        // vy
                                                             prev_states[i].psi,       // phi
                                                             prev_states[i].r,         // r
                                                             prev_states[i].delta,     // delta
                                                             prev_states[i].delta_dot; // delta dot
-            }else{
-                m.x_prev.segment(i * n_states, n_states) = m.x_prev.segment((i - 1) * n_states, n_states);
-            }
-        }
 
-        // vx vector
-        for (size_t i = 0; i < n_horizon; ++i){
-            if (i < prev_states.size()){
                 m.vx[i] = prev_states[i].vx;
             }else{
+                m.x_prev.segment(i * n_states, n_states) = m.x_prev.segment((i - 1) * n_states, n_states);
                 m.vx[i] = m.vx[i - 1];
             }
-        }
 
-        // u_prev vector
-        for (size_t i = 0; i < n_horizon; ++i){
+            // u_prev vector
             if (i < prev_controls.size()){
                 m.u_prev(i * n_controls) = prev_controls[i].steering; // steering
                 m.u_prev(i * n_controls +1) = prev_controls[i].mz; // steering
             }else{
                 m.u_prev.segment(i * n_controls, n_controls) = m.u_prev.segment((i - 1) * n_controls, n_controls);
             }
-        }
 
-        // Discrete model matrices Ad Bd Cd
-        for (size_t i = 0; i < n_horizon; ++i){
+            // Discrete model matrices Ad Bd Cd
             auto prev_state = m.x_prev.segment(i * n_states, n_states);
             auto prev_u = m.u_prev.segment(i * n_controls, n_controls);
 
@@ -245,56 +238,52 @@ class MPC {
                 std::cout << "NaN in model matrices at step " << i << std::endl;
             }
         }
+        }   
 
         // Fill matrix T
-        m.T.setZero();
-        for (int i = 0; i < n_horizon; ++i)
+        {PROFC_NODE("createModelMatrices_T")
+        m.temp6x6 = m.Ad[0];
+        m.T.block(0, 0, n_states, n_states) = m.temp6x6;
+        for (int i = 1; i < n_horizon; ++i)
         {
-            m.Aprod.setIdentity();
-            for (int k = 0; k <= i; ++k)
-            {
-                m.Aprod = m.Ad[k] * m.Aprod;
-            }
-
-            m.T.block(i * n_states, 0, n_states, n_states) = m.Aprod;
+            m.temp6x6.noalias() = m.Ad[i] * m.temp6x6;
+            m.T.block(i * n_states, 0, n_states, n_states) = m.temp6x6;
+        }
         }
 
         // Fill matrix S
-        m.S.setZero();
-        for (int i = 0; i < n_horizon; ++i)
+        {PROFC_NODE("createModelMatrices_S")
+        for (int j = 0; j < n_horizon; ++j)
         {
-            for (int j = 0; j <= i; ++j)
-            {
-                m.Aprod.setIdentity();
+            Eigen::Matrix<double, 6, 2> AB = m.Bd[j];
 
-                for (int k = j + 1; k <= i; ++k)
+            for (int i = j; i < n_horizon; ++i)
+            {
+                if (i > j)
                 {
-                    m.Aprod = m.Ad[k] * m.Aprod;
+                    AB.noalias() = m.Ad[i] * AB;
                 }
 
-                m.S.block(i * n_states, j * n_controls, n_states, n_controls) = m.Aprod * m.Bd[j];
+                m.S.block(i * n_states, j * n_controls, n_states, n_controls) = AB;
             }
+        }
         }
 
         // Fill matrix W
+        {PROFC_NODE("createModelMatrices_W")
         m.W.setZero();
-        for (int i = 0; i < n_horizon; ++i)
+        for (int j = 0; j < n_horizon; ++j)
         {
-            m.wk.setZero();
+            Eigen::VectorXd Aprop_C = m.Cd[j];
 
-            for (int j = 0; j <= i; ++j)
+            for (int i = j; i < n_horizon; ++i)
             {
-                m.Aprod.setIdentity();
+                if (i > j)
+                    Aprop_C.noalias() = m.Ad[i] * Aprop_C;
 
-                for (int k = j + 1; k <= i; ++k)
-                {
-                    m.Aprod = m.Ad[k] * m.Aprod;
-                }
-
-                m.wk.noalias() += m.Aprod * m.Cd[j];
+                m.W.segment(i*n_states, n_states) += Aprop_C;
             }
-
-            m.W.segment(i * n_states, n_states) = m.wk;
+        }
         }
 
         if(cfg.verbose){
@@ -441,11 +430,16 @@ class MPC {
         }
 
         m.Aprod.resize(n_states, n_states);
+        m.temp6x6.resize(n_states, n_states);
         m.wk.resize(n_states);
 
         m.S.resize(n_horizon * n_states, n_horizon * n_controls);
         m.T.resize(n_horizon * n_states, n_states);
         m.W.resize(n_horizon * n_states);
+
+        m.S.setZero();
+        m.T.setZero();
+        m.W.setZero();
     }
     
     // Safety function for steering command

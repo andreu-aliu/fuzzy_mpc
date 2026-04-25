@@ -94,6 +94,12 @@ class Manager : public rclcpp::Node{
             
             // Get reference in global coordinates
             std::vector<State> global_ref = build_reference_global(global_trajectory, global_state, cfg.mpc.Ts, cfg.mpc.n_horizon);
+            if(!is_valid(global_ref)){
+                RCLCPP_ERROR(get_logger(), "MPC: Invalid global reference");
+                std::cout << "Trajectory size: " << global_trajectory.size() << std::endl;
+                std::cout << "Global reference size: " << global_ref.size() << std::endl;
+                return;
+            }
 
             // Update MPC history
             
@@ -104,6 +110,10 @@ class Manager : public rclcpp::Node{
             for (size_t i = 0; i < global_ref.size(); ++i){
                 local_ref[i] = global_to_local_state(global_ref[i], global_ref[0]);
             }
+            if(!is_valid(local_ref)){
+                RCLCPP_ERROR(get_logger(), "MPC: Invalid local state or reference");
+                return;
+            }
 
             // Publish reference visualization
             pubReferencePath->publish(localPathMsg(local_ref, local_state));
@@ -113,7 +123,7 @@ class Manager : public rclcpp::Node{
                 predicted_states = local_ref;
                 optimal_controls = std::vector<Control>(cfg.mpc.n_horizon, Control{0.0, 0.0});
                 applied_control = optimal_controls[0];
-                // first_iteration = false;
+                first_iteration = false;
             }
             previous_states = predicted_states;
             previous_controls = optimal_controls;

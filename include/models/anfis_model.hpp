@@ -74,8 +74,6 @@ public:
             throw std::runtime_error("ANFIS models not initialized");
         }
 
-        PROFC_NODE_
-
         const Config& cfg = Config::getInstance();
         const double dt = cfg.mpc.Ts;
 
