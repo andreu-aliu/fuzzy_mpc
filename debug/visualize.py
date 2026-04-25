@@ -51,7 +51,7 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
     u_opt_raw = _read_csv_if_exists(folder / "u_opt.csv")
     pred_states_raw = _read_csv_if_exists(folder / "x_pred.csv")
     x_ref_raw = _read_csv_if_exists(folder / "x_ref.csv")
-    x0_raw = _read_csv_if_exists(folder / "x0.csv")  # optional (not plotted)
+    x0_raw = _read_csv_if_exists(folder / "x0.csv")  # optional (starting point marker)
 
     if u_opt_raw is None or pred_states_raw is None or x_ref_raw is None:
         raise FileNotFoundError("Missing required CSV(s): u_opt.csv, x_pred.csv, x_ref.csv")
@@ -78,10 +78,31 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
         row = n_rows - 1
     row = int(np.clip(row, 0, n_rows - 1))
 
+    def _prep_x0(x0: np.ndarray | None):
+        if x0 is None:
+            return None
+        x0 = np.asarray(x0)
+        if x0.ndim == 1:
+            x0 = x0.reshape(1, -1)
+        if x0.shape[1] == 1 and x0.shape[0] == n_states:
+            x0 = x0.reshape(1, n_states)
+        elif x0.shape[1] == 1 and x0.shape[0] != 1 and x0.shape[0] == n_rows * n_states:
+            x0 = x0.reshape(n_rows, n_states)
+        elif x0.shape[1] >= n_states:
+            x0 = x0[:, :n_states]
+        else:
+            padded = np.full((x0.shape[0], n_states), np.nan, dtype=float)
+            padded[:, : x0.shape[1]] = x0
+            x0 = padded
+        if x0.shape[0] == 1 and n_rows > 1:
+            x0 = np.repeat(x0, n_rows, axis=0)
+        return x0
+
     # Pre-reshape into 3D arrays for quick slider updates.
     u_opt_all = u_opt_raw[:n_rows].reshape(n_rows, n_horizon, n_inputs)
     pred_st_all = pred_states_raw[:n_rows].reshape(n_rows, n_horizon, n_states)
     ref_st_all = x_ref_raw[:n_rows].reshape(n_rows, n_horizon, n_states)
+    x0_all = _prep_x0(x0_raw[:n_rows] if x0_raw is not None else None)
     prev_st_all = x_prev_raw[:n_rows].reshape(n_rows, n_horizon, n_states) if x_prev_raw is not None else None
     prev_u_all = u_prev_raw[:n_rows].reshape(n_rows, n_horizon, n_inputs) if u_prev_raw is not None else None
 
@@ -99,15 +120,43 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
 
     fig.suptitle(f"CSV row: {row}/{n_rows - 1}", y=0.995)
 
+    def _autoscale_axis_y(ax, pad_frac=0.05):
+        ys = []
+        for line in ax.lines:
+            y = np.asarray(line.get_ydata())
+            if y.size:
+                ys.append(y)
+        if not ys:
+            return
+        y_all = np.concatenate(ys)
+        y_all = y_all[np.isfinite(y_all)]
+        if y_all.size == 0:
+            return
+
+        y_min = float(np.min(y_all))
+        y_max = float(np.max(y_all))
+        if y_min == y_max:
+            pad = max(1e-3, abs(y_min) * pad_frac)
+        else:
+            pad = (y_max - y_min) * pad_frac
+        ax.set_ylim(y_min - pad, y_max + pad)
+
     ref_lines = []
     pred_lines = []
     prev_state_lines = []
+    x0_dots = []
 
     # Plot each state on its own subplot.
     for i in range(n_states):
         state_name = state_names[i]
         (ref_line,) = axes[i].plot(horizon_range, ref_st_all[row, :, i], 'o-', label=f'Ref {state_name}', linewidth=2)
         ref_lines.append(ref_line)
+
+        if x0_all is not None:
+            (x0_dot,) = axes[i].plot([0], [x0_all[row, i]], 'o', color='red', label='x0', markersize=7, zorder=5)
+        else:
+            x0_dot = None
+        x0_dots.append(x0_dot)
 
         if prev_st_all is not None:
             (prev_line,) = axes[i].plot(horizon_range, prev_st_all[row, :, i], 'x:', label=f'Prev {state_name}', linewidth=2)
@@ -143,6 +192,10 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
         axis.grid(True, alpha=0.3)
 
     axes[-1].set_xlabel("Horizon Step")
+    axes[-1].set_xlim(horizon_range[0], horizon_range[-1])
+
+    for ax in axes:
+        _autoscale_axis_y(ax)
     
     # Slider: select which CSV row/iteration to visualize.
     fig.subplots_adjust(bottom=0.06)
@@ -164,6 +217,8 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
         for i in range(n_states):
             ref_lines[i].set_ydata(ref_st_all[r, :, i])
             pred_lines[i].set_ydata(pred_st_all[r, :, i])
+            if x0_dots[i] is not None:
+                x0_dots[i].set_ydata([x0_all[r, i]])
             if prev_state_lines[i] is not None:
                 prev_state_lines[i].set_ydata(prev_st_all[r, :, i])
 
@@ -171,6 +226,9 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
             input_lines[i].set_ydata(u_opt_all[r, :, i])
             if prev_input_lines[i] is not None:
                 prev_input_lines[i].set_ydata(prev_u_all[r, :, i])
+
+        for ax in axes:
+            _autoscale_axis_y(ax)
 
         fig.canvas.draw_idle()
 

@@ -94,7 +94,7 @@ class MPC {
         Eigen::VectorXd diag_values(n_states);
         diag_values << cfg.mpc.q_lat / pow(cfg.mpc.scale_y, 2),
                        cfg.mpc.q_vy / pow(cfg.mpc.scale_vy, 2), 
-                       cfg.mpc.q_phi / pow(cfg.mpc.scale_vy, 2), 
+                       cfg.mpc.q_phi / pow(cfg.mpc.scale_phi, 2), 
                        cfg.mpc.q_r / pow(cfg.mpc.scale_r, 2), 
                        cfg.mpc.q_delta / pow(cfg.mpc.scale_st, 2), 
                        cfg.mpc.q_delta_dot / pow(cfg.mpc.scale_dst, 2);
@@ -330,30 +330,31 @@ class MPC {
         g = 2.0 * (m.S.transpose() * Q * e) + 2.0 * D.transpose() * Rd_ * d; // TODO: 2 is correct?
 
         // Sanity check
-        if(!H.allFinite()){
-            std::cerr << "Error: H matrix contains non-finite values" << std::endl;
-        }
-        if(!g.allFinite()){
-            std::cerr << "Error: g vector contains non-finite values" << std::endl;
-        }
+        // if(!H.allFinite()){
+        //     std::cerr << "Error: H matrix contains non-finite values" << std::endl;
+        // }
+        // if(!g.allFinite()){
+        //     std::cerr << "Error: g vector contains non-finite values" << std::endl;
+        // }
 
-        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(H);
-        double min_eig = eig.eigenvalues().minCoeff();
-        if (min_eig <= 0){
-            std::cerr << "Error: H matrix is not positive definite, min eigenvalue: " << min_eig << std::endl;
-        }
+        // Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(H);
+        // double min_eig = eig.eigenvalues().minCoeff();
+        // if (min_eig <= 0){
+        //     std::cerr << "Error: H matrix is not positive definite, min eigenvalue: " << min_eig << std::endl;
+        // }
 
         // Solution without constraints
-            // u_opt = H.ldlt().solve(-g); // Cholesk variant (for positive and negative defined matrices)
+            u_opt = H.ldlt().solve(-g); // Cholesk variant (for positive and negative defined matrices)
             // u_opt = H.llt().solve(-g); // Cholesky decomposition (need to find if H is positive define)
 
         // Solution with constraints using HPIPM solver
-            solver.solve(H, g, m.S, m.T, m.x0);
-            u_opt = solver.getSolution();
+            // solver.solve(H, g, m.S, m.T, m.x0);
+            // u_opt = solver.getSolution();
 
         Controls optimal_controls(n_horizon);
         for (size_t i = 0; i < n_horizon; ++i){
             optimal_controls[i].steering = u_opt(i * n_controls);
+            optimal_controls[i].mz = u_opt(i * n_controls + 1);
         }
 
         if(cfg.verbose){
@@ -387,6 +388,7 @@ class MPC {
         u_vec.setZero();
         for (size_t i = 0; i < controls.size(); ++i){
             u_vec(i * n_controls) = controls[i].steering;
+            u_vec(i * n_controls + 1) = controls[i].mz;
         }
 
         x_pred.noalias() = m.T * x0_vec + m.S * u_vec + m.W;
@@ -398,6 +400,8 @@ class MPC {
             predicted_states[i].r = x_pred(i * n_states + 3);
             predicted_states[i].delta = x_pred(i * n_states + 4);
             predicted_states[i].delta_dot = x_pred(i * n_states + 5);
+
+            predicted_states[i].vx = m.vx[i]; // vx is not predicted by the model
         }
 
         if(cfg.save_debug){
