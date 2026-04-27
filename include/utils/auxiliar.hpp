@@ -117,7 +117,8 @@ inline std::vector<State> build_reference_global(
     int Np)
 {
     PROFC_NODE_
-
+    
+    constexpr double ds = 0.025;
     std::vector<State> X_ref(Np);
 
     if (traj.size() < 2) {
@@ -125,9 +126,8 @@ inline std::vector<State> build_reference_global(
         return X_ref; // not enough data
     }
 
-    // 1. Precompute psi from geometry
+    // --- Precompute psi ---
     std::vector<double> psi_vec(traj.size());
-
     for (size_t i = 0; i < traj.size(); ++i)
     {
         double dx, dy;
@@ -135,92 +135,61 @@ inline std::vector<State> build_reference_global(
         if (i == 0) {
             dx = traj[i+1].x - traj[i].x;
             dy = traj[i+1].y - traj[i].y;
-        }
-        else if (i == traj.size() - 1) {
+        } else if (i == traj.size()-1) {
             dx = traj[i].x - traj[i-1].x;
             dy = traj[i].y - traj[i-1].y;
-        }
-        else {
+        } else {
             dx = traj[i+1].x - traj[i-1].x;
             dy = traj[i+1].y - traj[i-1].y;
         }
 
         double norm = std::hypot(dx, dy);
-
-        if (norm < 1e-9) {
-            psi_vec[i] = (i > 0) ? psi_vec[i-1] : 0.0;
-        } else {
-            psi_vec[i] = std::atan2(dy, dx);
-        }
+        psi_vec[i] = (norm < 1e-9) ? (i>0 ? psi_vec[i-1] : 0.0)
+                                  : std::atan2(dy, dx);
     }
 
-    // 2. Find starting point
-    int idx = find_closest_point(traj, Xg.x, Xg.y);
-    double s_i = traj[idx].s;
+    // --- Closest point ---
+    int idx0 = find_closest_point(traj, Xg.x, Xg.y);
 
-    size_t k = static_cast<size_t>(idx);
+    // floating index
+    double idx_f = static_cast<double>(idx0);
 
-    // 3. Build reference
+    // --- Build reference ---
     for (int i = 0; i < Np; ++i)
     {
-        // Clamp to end
-        if (s_i >= traj.back().s)
-        {
-            const auto& p = traj.back();
+        int k = static_cast<int>(idx_f);
+        int k1 = std::min(k + 1, (int)traj.size() - 1);
 
-            X_ref[i] = {
-                p.x,
-                p.y,
-                psi_vec.back(),
-                p.vx,
-                0.0, 
-                p.r,
-                0.0, 0.0
-            };
-            continue;
-        }
-
-        // Advance cursor
-        while (k + 1 < traj.size() && traj[k + 1].s < s_i)
-            ++k;
+        double t = idx_f - k;   // interpolation factor [0,1]
 
         const auto& p0 = traj[k];
-        const auto& p1 = traj[std::min(k + 1, traj.size() - 1)];
+        const auto& p1 = traj[k1];
 
-        double ds = p1.s - p0.s;
-
-        double t = 0.0;
-        if (std::abs(ds) > 1e-9) {
-            t = (s_i - p0.s) / ds;
-            t = std::clamp(t, 0.0, 1.0);
-        }
-
-        // Interpolate position and velocity
+        // Interpolate
         double x_t  = p0.x  + t * (p1.x  - p0.x);
         double y_t  = p0.y  + t * (p1.y  - p0.y);
         double vx_t = p0.vx + t * (p1.vx - p0.vx);
-        double r_t  = p0.r + t * (p1.r - p0.r);
+        double r_t  = p0.r  + t * (p1.r  - p0.r);
 
-        // Interpolate angle (safe wrap)
-        double dpsi = wrapToPi(psi_vec[k+1] - psi_vec[k]);
+        double dpsi = wrapToPi(psi_vec[k1] - psi_vec[k]);
         double psi_t = wrapToPi(psi_vec[k] + t * dpsi);
 
-        // Build state
         X_ref[i] = {
             x_t,
             y_t,
             psi_t,
             vx_t,
-            0.0, 
+            0.0,
             r_t,
             0.0, 0.0
         };
 
-        // Advance along trajectory
-        s_i += vx_t * dt;
+        // --- advance in index space ---
+        idx_f += (vx_t * dt) / ds;
 
-        if (!std::isfinite(s_i))
-            s_i = p0.s;
+        // --- handle end of trajectory ---
+        if (idx_f >= traj.size() - 1)
+            idx_f = traj.size() - 1;
     }
 
     return X_ref;
