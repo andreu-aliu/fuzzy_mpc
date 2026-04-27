@@ -238,4 +238,4 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
     plt.show()
 
 if __name__ == "__main__":
-    visualize_mpc_debug(n_inputs=2, n_states=6, n_horizon=60, row=0)
+    visualize_mpc_debug(n_inputs=2, n_states=6, n_horizon=60)

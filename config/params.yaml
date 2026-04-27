@@ -3,14 +3,19 @@ as/c:
     ros__parameters:
 
       verbose: false
-      save_debug: true
+      save_debug: false
       profile: true
-      debug_path: "/src/as/control/fuzzy_mpc/debug"  # Debug path from ROS2 workspace
+      debug_path: "/src/as/control/fuzzy_mpc/debug"  # Where in your ws to save csv
       
       MPC:
-        Ts: 0.02           # [s] Sampling time 
+        Ts: 0.02          # [s] Sampling time (must be trained Ts for ANFIS model)
         n_horizon: 60     # Number of steps in the horizon
         latency: 0.0      # [s] Latency to compensate for in the MPC
+
+        # Limits
+        max_steering: 0.436       # [rad] Maximum steering angle
+        max_steering_dot: 1.396   # [rad/s] Maximum steering rate
+        max_mz: 100.0             # [Nm] Maximum moment around the vertical axis
 
         # Scalings to normalize weights and state evaluation
         scale_y: 0.1      # [m]

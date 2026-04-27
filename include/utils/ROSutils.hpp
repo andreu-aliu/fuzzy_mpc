@@ -31,6 +31,10 @@ inline void fill_config(Config& cfg, rclcpp::Node* node)
     node->get_parameter("MPC.Ts",         cfg.mpc.Ts);
     node->get_parameter("MPC.latency",    cfg.mpc.latency);
 
+    node->get_parameter("MPC.max_steering",     cfg.mpc.max_steering);
+    node->get_parameter("MPC.max_steering_dot", cfg.mpc.max_steering_dot);
+    node->get_parameter("MPC.max_mz",           cfg.mpc.max_mz);
+
     node->get_parameter("MPC.scale_y",       cfg.mpc.scale_y);
     node->get_parameter("MPC.scale_vy",      cfg.mpc.scale_vy);
     node->get_parameter("MPC.scale_phi",     cfg.mpc.scale_phi);

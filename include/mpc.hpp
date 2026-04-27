@@ -320,7 +320,6 @@ class MPC {
         d.setZero();
         d(0) = -u_prev_iter.steering;
         d(1) = -u_prev_iter.mz;
-
         
         H = 2.0 * (m.S.transpose() * Q * m.S + R_ + D.transpose() * Rd_ * D);
         H = 0.5 * (H + H.transpose());
@@ -329,14 +328,13 @@ class MPC {
         Eigen::VectorXd e = m.T * m.x0 + m.W - m.x_ref;
         g = 2.0 * (m.S.transpose() * Q * e) + 2.0 * D.transpose() * Rd_ * d; // TODO: 2 is correct?
 
-        // Sanity check
+        // Sanity checks
         // if(!H.allFinite()){
         //     std::cerr << "Error: H matrix contains non-finite values" << std::endl;
         // }
         // if(!g.allFinite()){
         //     std::cerr << "Error: g vector contains non-finite values" << std::endl;
         // }
-
         // Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(H);
         // double min_eig = eig.eigenvalues().minCoeff();
         // if (min_eig <= 0){
@@ -375,7 +373,7 @@ class MPC {
     }
 
     // Predict the following states given initial state and controls
-    States predict_states(const State &x_0, const Controls &controls, const ModelMatrices &m){
+    States predict_states(const State &x_0, const States ref_state, const Controls &controls, const ModelMatrices &m){
         PROFC_NODE_
 
         States predicted_states(n_horizon);
@@ -402,6 +400,7 @@ class MPC {
             predicted_states[i].delta_dot = x_pred(i * n_states + 5);
 
             predicted_states[i].vx = m.vx[i]; // vx is not predicted by the model
+            predicted_states[i].x = ref_state[i].x;
         }
 
         if(cfg.save_debug){
@@ -452,10 +451,10 @@ class MPC {
             return 0.0;
         else if (car_state.vx < 0.3)
             return 0.0;
-        else if (steering > 25 * M_PI / 180.0)
-            return 25 * M_PI / 180.0;
-        else if (steering < -25 * M_PI / 180.0)
-            return -25 * M_PI / 180.0;
+        else if (steering > cfg.mpc.max_steering)
+            return cfg.mpc.max_steering;
+        else if (steering < -cfg.mpc.max_steering)
+            return -cfg.mpc.max_steering;
         else
             return steering;
     }
@@ -566,12 +565,7 @@ class MPC {
 
         firstIteration = true;
 
-        // TODO: This as a parameter
-        double max_steering = 25.0 * M_PI / 180.0; // rad
-        double max_steering_dot = 80.0 * M_PI / 180.0; // rad/s
-        double max_mz = 1000.0;
-
-        solver.setParams(max_steering, max_steering_dot, max_mz, n_states, n_horizon, n_controls, cfg.verbose);
+        solver.setParams(cfg.mpc.max_steering, cfg.mpc.max_steering_dot, cfg.mpc.max_mz, n_states, n_horizon, n_controls, cfg.verbose);
         std::cout << "MPC initialized" << std::endl;
     }
 
@@ -591,13 +585,13 @@ class MPC {
         createReference(local_ref);
         createModelMatrices(car_state, x_prev, u_prev, mpc_matrices);
         optimal_controls = solve(mpc_matrices, u_prev_iter);
-        predicted_states = predict_states(car_state, optimal_controls, mpc_matrices);
 
         // Ensure safety
         for (size_t i = 0; i < optimal_controls.size(); ++i){
             optimal_controls[i].steering = steeringSafety(optimal_controls[i].steering, car_state);
         }
-        
+
+        predicted_states = predict_states(car_state, local_ref, optimal_controls, mpc_matrices);        
     }
 
     States compute_prediction(const State &x_0, const Controls controls, const States &x_prev, const Controls &u_prev)
@@ -605,7 +599,7 @@ class MPC {
         PROFC_NODE_
 
         createModelMatrices(x_0, x_prev, u_prev, evaluator_matrices);
-        States prediction = predict_states(x_0, controls, evaluator_matrices);
+        States prediction = predict_states(x_0, x_prev, controls, evaluator_matrices);
 
         return prediction;
     }

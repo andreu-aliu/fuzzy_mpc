@@ -18,6 +18,11 @@ struct Config{
         int n_horizon;      // prediction horizon        
         double latency;     // actuation latency [s]
 
+        // Limits
+        double max_steering;
+        double max_steering_dot;
+        double max_mz;
+
         // scalings
         double scale_y;
         double scale_vy;
