@@ -342,12 +342,12 @@ class MPC {
         // }
 
         // Solution without constraints
-            u_opt = H.ldlt().solve(-g); // Cholesk variant (for positive and negative defined matrices)
+            // u_opt = H.ldlt().solve(-g); // Cholesk variant (for positive and negative defined matrices)
             // u_opt = H.llt().solve(-g); // Cholesky decomposition (need to find if H is positive define)
 
         // Solution with constraints using HPIPM solver
-            // solver.solve(H, g, m.S, m.T, m.x0);
-            // u_opt = solver.getSolution();
+            solver.solve(H, g, m.S, m.T, m.x0);
+            u_opt = solver.getSolution();
 
         Controls optimal_controls(n_horizon);
         for (size_t i = 0; i < n_horizon; ++i){

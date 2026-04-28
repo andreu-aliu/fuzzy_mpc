@@ -106,6 +106,7 @@ State stateMsg(const cat_msgs::msg::CarState::SharedPtr& msg)
     car_state.vy = msg->odom.velocity.y;
     car_state.r = msg->odom.velocity.w;
     car_state.delta = msg->steering;
+    car_state.delta_dot = 0.0;
 
     return car_state;
 }
