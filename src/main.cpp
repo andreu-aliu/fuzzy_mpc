@@ -135,7 +135,7 @@ class Manager : public rclcpp::Node{
             }
 
             // Publish commands
-            applied_control = optimal_controls[2];  // TODO: Use parameter
+            applied_control = optimal_controls[0];  // TODO: Use parameter
             double steering = applied_control.steering;
             pubSteering->publish(steerMsg(steering));
 

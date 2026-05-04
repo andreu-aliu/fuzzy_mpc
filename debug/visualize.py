@@ -7,7 +7,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 
-def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_mpc/debug",
+def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_mpc/debug/csv",
                         n_inputs=2, n_states=6, n_horizon=60, row=-1, state_names=None, input_names=None,
                         show_prev=True):
     """

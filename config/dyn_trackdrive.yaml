@@ -5,19 +5,19 @@ as/c:
 
         latency: 0.0
 
-        q_lat: 1.0
+        q_lat: 0.01
         q_vy: 0.0
         q_phi: 0.0 
         q_r: 0.0
         q_delta: 0.0
         q_delta_dot: 0.00000005
 
-        p_lat: 1.0
+        p_lat: 0.01
         p_vy: 0.0
         p_phi: 0.0
         p_r: 0.0
         p_delta: 0.0
-        p_delta_dot: 0.0
+        p_delta_dot: 0.00000005
 
         r_st: 0.0
         r_mz: 0.0

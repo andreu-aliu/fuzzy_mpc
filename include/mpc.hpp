@@ -170,6 +170,11 @@ class MPC {
             }
         }
 
+        // TODO: Debug only
+        std::string ref_path = "/home/andreu/ros_ws/src/as/control/ltv_mpc/test/data/x_ref.csv";
+        mpc_matrices.x_ref = loadCsvRowAsEigen(ref_path, 1);
+        std::cout << "Size of x_ref: " << mpc_matrices.x_ref << std::endl;
+
         if(cfg.verbose){
             std::cout << "Reference trajectory (first 5 points): " << std::endl;
             for (size_t i = 0; i < std::min(size_t(5), local_ref.size()); ++i){
@@ -188,7 +193,7 @@ class MPC {
         PROFC_NODE_
 
         // x_0 vector
-        m.x0 << car_state.y,        // y
+        m.x0 << car_state.y,          // y
                 car_state.vy,         // vy
                 car_state.psi,        // phi
                 car_state.r,          // r
@@ -196,18 +201,27 @@ class MPC {
                 car_state.delta_dot;  // delta dot
 
         {PROFC_NODE("createModelMatrices_first")
+
+        // Overwrite x_prev to debug //TODO: delelte
+        std::string ref_path = "/home/andreu/ros_ws/src/as/control/ltv_mpc/test/data/transformed_headings.csv";
+        Eigen::VectorXd transformed_headings = loadCsvRowAsEigen(ref_path, 1);
+        ref_path = "/home/andreu/ros_ws/src/as/control/ltv_mpc/test/data/prev_delta.csv";
+        Eigen::VectorXd prev_delta = loadCsvRowAsEigen(ref_path, 1); 
+        ref_path = "/home/andreu/ros_ws/src/as/control/ltv_mpc/test/data/vx.csv";
+        Eigen::VectorXd vx_ltv = loadCsvRowAsEigen(ref_path, 1); 
+
         for (size_t i = 0; i < n_horizon; ++i){
 
             if (i < prev_states.size()){
                 // x_prev vector
-                m.x_prev.segment(i * n_states, n_states) << prev_states[i].y,       // y
+                m.x_prev.segment(i * n_states, n_states) << prev_states[i].y,         // y
                                                             prev_states[i].vy,        // vy
-                                                            prev_states[i].psi,       // phi
+                                                            transformed_headings[i+1], //prev_states[i].psi,       // phi
                                                             prev_states[i].r,         // r
-                                                            prev_states[i].delta,     // delta
+                                                            prev_delta[i], // prev_states[i].delta,     // delta
                                                             prev_states[i].delta_dot; // delta dot
 
-                m.vx[i] = prev_states[i].vx;
+                m.vx[i] = vx_ltv[i]; //prev_states[i].vx;
             }else{
                 m.x_prev.segment(i * n_states, n_states) = m.x_prev.segment((i - 1) * n_states, n_states);
                 m.vx[i] = m.vx[i - 1];
@@ -215,8 +229,8 @@ class MPC {
 
             // u_prev vector
             if (i < prev_controls.size()){
-                m.u_prev(i * n_controls) = prev_controls[i].steering; // steering
-                m.u_prev(i * n_controls +1) = prev_controls[i].mz; // steering
+                m.u_prev(i * n_controls) = prev_controls[i].steering;   // steering
+                m.u_prev(i * n_controls +1) = prev_controls[i].mz;      // mz
             }else{
                 m.u_prev.segment(i * n_controls, n_controls) = m.u_prev.segment((i - 1) * n_controls, n_controls);
             }
@@ -228,6 +242,7 @@ class MPC {
             model->getDiscreteMatrices(prev_state, prev_u, m.vx[i], m.Ad[i], m.Bd[i], m.Cd[i]);
 
             if(cfg.verbose){
+                std::cout << "At step " << i << " : vx: " << m.vx[i] << " phi: " << m.x_prev[i*6+2] << " delta: " << m.x_prev[i*6+4] << std::endl;
                 std::cout << "Ad[" << i << "]:\n" << m.Ad[i] << std::endl;
                 std::cout << "Bd[" << i << "]:\n" << m.Bd[i] << std::endl;
                 std::cout << "Cd[" << i << "]:\n" << m.Cd[i].transpose() << std::endl;
@@ -300,7 +315,6 @@ class MPC {
         }
 
         if(cfg.save_debug){
-            appendSingleRowToCSV(m.x0, "x0");
             appendSingleRowToCSV(m.x_prev, "x_prev");
             appendSingleRowToCSV(m.vx, "vx");
             appendSingleRowToCSV(m.u_prev, "u_prev");
@@ -320,13 +334,17 @@ class MPC {
         d.setZero();
         d(0) = -u_prev_iter.steering;
         d(1) = -u_prev_iter.mz;
+
+        // Overwrite x0 for debug // TODO: Delete
+        std::string ref_path = "/home/andreu/ros_ws/src/as/control/ltv_mpc/test/data/x0.csv";
+        m.x0 = loadCsvRowAsEigen(ref_path, 1);
         
-        H = 2.0 * (m.S.transpose() * Q * m.S + R_ + D.transpose() * Rd_ * D);
-        H = 0.5 * (H + H.transpose());
-        H.diagonal().array() += 1e-8;
+        H = 2.0 * (m.S.transpose() * Q * m.S + R_); // + D.transpose() * Rd_ * D);
+        // H = 0.5 * (H + H.transpose());
+        // H.diagonal().array() += 1e-8;
         
         Eigen::VectorXd e = m.T * m.x0 + m.W - m.x_ref;
-        g = 2.0 * (m.S.transpose() * Q * e) + 2.0 * D.transpose() * Rd_ * d; // TODO: 2 is correct?
+        g = 2.0 * (m.S.transpose() * Q * e); // + 2.0 * D.transpose() * Rd_ * d;
 
         // Sanity checks
         // if(!H.allFinite()){
@@ -342,12 +360,20 @@ class MPC {
         // }
 
         // Solution without constraints
-            // u_opt = H.ldlt().solve(-g); // Cholesk variant (for positive and negative defined matrices)
+            u_opt = H.ldlt().solve(-g); // Cholesk variant (for positive and negative defined matrices)
             // u_opt = H.llt().solve(-g); // Cholesky decomposition (need to find if H is positive define)
 
         // Solution with constraints using HPIPM solver
-            solver.solve(H, g, m.S, m.T, m.x0);
-            u_opt = solver.getSolution();
+            // solver.solve(H, g, m.S, m.T, m.x0);
+            // u_opt = solver.getSolution();
+
+        // Overwrite for debug
+        // ref_path = "/home/andreu/ros_ws/src/as/control/ltv_mpc/test/data/u_opt.csv";
+        // Eigen::VectorXd u_vec_ltv = loadCsvRowAsEigen(ref_path, 1);
+        // std::cout << "First u_vec_ltv: " << u_vec_ltv(1) << std::endl;
+        // for(size_t i = 0; i < n_horizon; i++){
+        //     u_opt(2*i) = u_vec_ltv(i);
+        // }
 
         Controls optimal_controls(n_horizon);
         for (size_t i = 0; i < n_horizon; ++i){
@@ -363,6 +389,7 @@ class MPC {
         }
 
         if(cfg.save_debug){
+            appendSingleRowToCSV(m.x0, "x0");
             appendSingleRowToCSV(d, "d");
             appendSingleRowToCSV(H, "H");
             appendSingleRowToCSV(g, "g");
@@ -528,6 +555,59 @@ class MPC {
         std::cout << "[fuzzy_mpc] " << vectorname << " saved to " << filename << std::endl;
     }
 
+    // Read csv and load as eigen to debug
+    Eigen::VectorXd loadCsvRowAsEigen(const std::string& path, int row_index = -1)
+    {
+        std::ifstream file(path);
+
+        if (!file.is_open()) {
+            throw std::runtime_error("Could not open CSV file: " + path);
+        }
+
+        std::string line;
+        std::vector<std::string> lines;
+
+        while (std::getline(file, line)) {
+            if (!line.empty()) {
+                lines.push_back(line);
+            }
+        }
+
+        if (lines.empty()) {
+            throw std::runtime_error("CSV file is empty: " + path);
+        }
+
+        std::string selected_line;
+
+        if (row_index < 0) {
+            selected_line = lines.back();  // last row
+        } else {
+            if (row_index >= static_cast<int>(lines.size())) {
+                throw std::runtime_error("Requested row does not exist in CSV: " + path);
+            }
+
+            selected_line = lines[row_index];
+        }
+
+        std::stringstream ss(selected_line);
+        std::string cell;
+        std::vector<double> values;
+
+        while (std::getline(ss, cell, ',')) {
+            if (!cell.empty()) {
+                values.push_back(std::stod(cell));
+            }
+        }
+
+        Eigen::VectorXd v(values.size());
+
+        for (int i = 0; i < static_cast<int>(values.size()); ++i) {
+            v(i) = values[i];
+        }
+
+        return v;
+    }
+  
   public:
     // Constructor
     MPC(): cfg(Config::getInstance()) {}

@@ -66,9 +66,9 @@ public:
         Eigen::Matrix<double,6,6> A;
 
         A << 0, cos(psi), vx*cos(psi), 0, 0, 0,
-            0, -(Cf_ * cos(delta) + Cr_) / (m_ * vx_safe), 0, -((lf_ * Cf_ * cos(delta) - lr_ * Cr_) / (m_ * vx_safe)) + vx, Cf_ * cos(delta) / m_, 0,
+            0, (Cf_ * cos(delta) + Cr_) / (m_ * vx_safe), 0, ((lf_ * Cf_ * cos(delta) - lr_ * Cr_) / (m_ * vx_safe)) - vx, -Cf_ * cos(delta) / m_, 0,
             0, 0, 0, 1, 0, 0,
-            0, -(lf_ * Cf_ * cos(delta) - lr_ * Cr_) / (Iz_ * vx_safe), 0, -(lf_ * lf_ * Cf_ * cos(delta) + lr_ * lr_ * Cr_) / (Iz_ * vx_safe), lf_ * Cf_ * cos(delta) / Iz_, 0, 
+            0, (lf_ * Cf_ * cos(delta) - lr_ * Cr_) / (Iz_ * vx_safe), 0, (lf_ * lf_ * Cf_ * cos(delta) + lr_ * lr_ * Cr_) / (Iz_ * vx_safe), -lf_ * Cf_ * cos(delta) / Iz_, 0, 
             0, 0, 0, 0, 0, 1,
             0, 0, 0, 0, - omega_ * omega_, - 2.0 * damp_ * omega_;
 

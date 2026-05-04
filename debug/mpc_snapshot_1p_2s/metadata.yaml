@@ -1,0 +1,38 @@
+rosbag2_bagfile_information:
+  version: 9
+  storage_identifier: mcap
+  duration:
+    nanoseconds: 646519780
+  starting_time:
+    nanoseconds_since_epoch: 1777480607482545731
+  message_count: 3
+  topics_with_message_count:
+    - topic_metadata:
+        name: /as/c/state
+        type: cat_msgs/msg/CarState
+        serialization_format: cdr
+        offered_qos_profiles:
+          []
+        type_description_hash: ""
+      message_count: 2
+    - topic_metadata:
+        name: /as/c/locator
+        type: cat_msgs/msg/ObjectiveArrayCurv
+        serialization_format: cdr
+        offered_qos_profiles:
+          []
+        type_description_hash: ""
+      message_count: 1
+  compression_format: ""
+  compression_mode: ""
+  relative_file_paths:
+    - mpc_snapshot_1p_2s_0.mcap
+  files:
+    - path: mpc_snapshot_1p_2s_0.mcap
+      starting_time:
+        nanoseconds_since_epoch: 1777480607482545731
+      duration:
+        nanoseconds: 646519780
+      message_count: 6
+  custom_data: ~
+  ros_distro: jazzy

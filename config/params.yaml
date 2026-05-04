@@ -5,7 +5,7 @@ as/c:
       verbose: false
       save_debug: true
       profile: true
-      debug_path: "/src/as/control/fuzzy_mpc/debug"  # Where in your ws to save csv
+      debug_path: "/src/as/control/fuzzy_mpc/debug/csv"  # Where in your ws to save csv
       
       MPC:
         Ts: 0.02          # [s] Sampling time (must be trained Ts for ANFIS model)
@@ -27,14 +27,14 @@ as/c:
         scale_dmz: 0.001 # [Nm/Ts]
 
       Car:
-        m: 220.0      # Car's mass
+        m: 215.0      # Car's mass
         I: 188.0      # Inertial moment (180) (128)
         Lf: 0.765     # Distance from CoG to front axis (0.708) 
         Lr: 0.765     # Distance from CoG to rear axis (0.822) 
         Bf: 10.5507   # 10.8529
         Br: 10.5507   # 10.1507
-        Cf: 1.2705    #-1.1705 
-        Cr: 1.2705    #-1.1705 
+        Cf: -1.2705    #-1.1705 
+        Cr: -1.2705    #-1.1705 
         Df: 1104.0    # 2208.0635*0.5
         Dr: 1281.5    # 2563.599*0.5
 
@@ -46,7 +46,7 @@ as/c:
         InState: /as/c/state
         InPlanner: /as/c/locator
         InVelocities: /as/c/log_pid/velocity
-        OutSteering: /as/c/steering_dummy
+        OutSteering: /as/c/steering
         OutDuration: /as/c/mpc/debug/time
         Vis:
           PredictedSteering:  /vis/predictedPath/steering
