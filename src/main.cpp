@@ -127,7 +127,7 @@ class Manager : public rclcpp::Node{
             }
             previous_states = predicted_states;
             previous_controls = optimal_controls;
-            mpc.compute_mpc(local_state, applied_control, local_ref, previous_states, previous_controls, predicted_states, optimal_controls);
+            mpc.compute_mpc(global_state, applied_control, global_trajectory, previous_states, previous_controls, predicted_states, optimal_controls);
 
             if(!is_valid(predicted_states) || !is_valid(optimal_controls)){                
                 first_iteration = true;
@@ -135,15 +135,16 @@ class Manager : public rclcpp::Node{
             }
 
             // Publish commands
-            applied_control = optimal_controls[0];  // TODO: Use parameter
+            applied_control = optimal_controls[2];  // TODO: Use parameter
             double steering = applied_control.steering;
+            std::cout << "I'm going to send: " << steering << std::endl;
             pubSteering->publish(steerMsg(steering));
 
             // Publish model error
 
 
             // Publish prediction visualization
-            pubPredictedPath->publish(localPathMsg(predicted_states, local_state));
+            // pubPredictedPath->publish(localPathMsg(predicted_states, local_state));
 
         }else{
             if(cfg.verbose)

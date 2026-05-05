@@ -2,7 +2,7 @@
 
 %% Load all csv from the MPC results
 
-idx = 2;
+idx = 1;
 
 % LTV_MPC
 ltv_path = "/home/andreu/ros_ws/src/as/control/ltv_mpc/test/data";
