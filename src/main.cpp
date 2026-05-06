@@ -16,6 +16,7 @@ class Manager : public rclcpp::Node{
     // Objects
     MPC mpc;
     Trajectory global_trajectory;
+    State base_state;
     States predicted_states;
     States previous_states;
     Controls previous_controls;
@@ -87,17 +88,15 @@ class Manager : public rclcpp::Node{
 
         if(cfg.verbose) std::cout << "--------  State callback   ------------------------------" << std::endl;
         
-        State global_state  =  stateMsg(msg);     
+        State global_state = stateMsg(msg);     
 
         if(planner_recieved){
             if(cfg.verbose) std::cout << "Planner received, running MPC" << std::endl;
             
             // Get reference in global coordinates
-            std::vector<State> global_ref = build_reference_global(global_trajectory, global_state, cfg.mpc.Ts, cfg.mpc.n_horizon);
+            std::vector<State> global_ref = build_reference(global_trajectory, global_state, base_state, cfg.mpc.Ts, cfg.mpc.n_horizon);
             if(!is_valid(global_ref)){
                 RCLCPP_ERROR(get_logger(), "MPC: Invalid global reference");
-                std::cout << "Trajectory size: " << global_trajectory.size() << std::endl;
-                std::cout << "Global reference size: " << global_ref.size() << std::endl;
                 return;
             }
 
@@ -105,10 +104,10 @@ class Manager : public rclcpp::Node{
             
 
             // Convert reference to local coordinates (first point of the trajectory)
-            State local_state = global_to_local_state(global_state, global_ref[0]);
+            State local_state = global_to_local_state(global_state, base_state);
             std::vector<State> local_ref(cfg.mpc.n_horizon);
             for (size_t i = 0; i < global_ref.size(); ++i){
-                local_ref[i] = global_to_local_state(global_ref[i], global_ref[0]);
+                local_ref[i] = global_to_local_state(global_ref[i], base_state);
             }
             if(!is_valid(local_ref)){
                 RCLCPP_ERROR(get_logger(), "MPC: Invalid local state or reference");
@@ -127,7 +126,7 @@ class Manager : public rclcpp::Node{
             }
             previous_states = predicted_states;
             previous_controls = optimal_controls;
-            mpc.compute_mpc(global_state, applied_control, global_trajectory, previous_states, previous_controls, predicted_states, optimal_controls);
+            mpc.compute_mpc(local_state, applied_control, local_ref, previous_states, previous_controls, predicted_states, optimal_controls);
 
             if(!is_valid(predicted_states) || !is_valid(optimal_controls)){                
                 first_iteration = true;
@@ -137,14 +136,13 @@ class Manager : public rclcpp::Node{
             // Publish commands
             applied_control = optimal_controls[2];  // TODO: Use parameter
             double steering = applied_control.steering;
-            std::cout << "I'm going to send: " << steering << std::endl;
             pubSteering->publish(steerMsg(steering));
 
             // Publish model error
 
 
             // Publish prediction visualization
-            // pubPredictedPath->publish(localPathMsg(predicted_states, local_state));
+            pubPredictedPath->publish(localPathMsg(predicted_states, local_state));
 
         }else{
             if(cfg.verbose)

@@ -107,12 +107,13 @@ inline double interp1(
 
 
 // ==============================
-// build_reference_global
+// build_reference
 // ==============================
 // Output: vector<State>
-inline std::vector<State> build_reference_global(
+inline std::vector<State> build_reference(
     const Trajectory& traj,
-    const State& Xg,
+    const State& car_state,
+    State& base_state,
     double dt,
     int Np)
 {
@@ -149,7 +150,18 @@ inline std::vector<State> build_reference_global(
     }
 
     // --- Closest point ---
-    int idx0 = find_closest_point(traj, Xg.x, Xg.y);
+    int idx0 = find_closest_point(traj, car_state.x, car_state.y);
+
+    base_state = {
+        traj[idx0].x,
+        traj[idx0].y,
+        psi_vec[idx0],
+        traj[idx0].vx,
+        0.0,
+        traj[idx0].w,
+        0.0,
+        0.0
+    };
 
     // floating index
     double idx_f = static_cast<double>(idx0);
@@ -169,7 +181,7 @@ inline std::vector<State> build_reference_global(
         double x_t  = p0.x  + t * (p1.x  - p0.x);
         double y_t  = p0.y  + t * (p1.y  - p0.y);
         double vx_t = p0.vx + t * (p1.vx - p0.vx);
-        double r_t  = p0.r  + t * (p1.r  - p0.r);
+        double r_t  = p0.w  + t * (p1.w  - p0.w);
 
         double dpsi = wrapToPi(psi_vec[k1] - psi_vec[k]);
         double psi_t = wrapToPi(psi_vec[k] + t * dpsi);
@@ -194,6 +206,7 @@ inline std::vector<State> build_reference_global(
 
     return X_ref;
 }
+
 
 // ==============================
 // global_to_local_state

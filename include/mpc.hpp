@@ -93,125 +93,6 @@ class MPC {
     /////////////////////////////////////////////////////////////////////////
     //-------------------------- MPC functions  ---------------------------//
 
-    // Select the references and convert it into the car's frame
-    void findReferences(const Trajectory global_traj, const State car_state){
-        PROFC_NODE_
-
-        vector<int> selected_index(n_horizon + 1);
-        vector<double> heading_track(n_horizon + 1);
-        vector<double> consec_heading_track(n_horizon + 1);
-        double transformed_heading = 0.0;
-        double prev_heading = 0.0;
-
-        Point p;
-        p[0] = car_state.x;
-        p[1] = car_state.y;
-
-        createKDTree(global_traj);
-        
-        // Planner point closest to the car
-        int next_state = planner_tree.nnSearch(p);
-        selected_index[0] = next_state;
-        
-        // Precompute cos and sin of reference heading
-        reference_x = global_traj[selected_index[0]].x;
-        reference_y = global_traj[selected_index[0]].y;
-        reference_heading = calcHeading(global_traj[selected_index[0]+1].x - global_traj[selected_index[0]].x,
-                                               global_traj[selected_index[0]+1].y - global_traj[selected_index[0]].y);
-        reference_heading = continuous(reference_heading, 0.0);
-        cos_ref = cos(reference_heading);
-        sin_ref = sin(reference_heading);
-
-        std::cout << "Next state idx: " << next_state << std::endl;
-        std::cout << "First idx x: " << reference_x << std::endl;
-        std::cout << "First idx y: " << reference_y << std::endl;
-        std::cout << "First idx psi: " << reference_heading << std::endl;
-            
-        Eigen::VectorXd x_ref_aux = Eigen::VectorXd::Zero(n_states * (n_horizon + 1));
-        for (size_t i = 0; i < n_states * (n_horizon + 1); ++i){ // TODO: Really necessary?
-            x_ref_aux(i) = 0.0;
-        }
-
-        for (size_t i = 0; i <= n_horizon; ++i){
-
-            double x = global_traj[selected_index[i]].x;
-            double y = global_traj[selected_index[i]].y;
-            mpc_matrices.vx[i] = global_traj[selected_index[i]].vx;
-            
-            // Calculate the heading based on predicted position
-            float disc_ = 0.025;
-            int go2idx = static_cast<int>(mpc_matrices.vx[i] * cfg.mpc.Ts / disc_);
-            int max_idx = static_cast<int>(global_traj.size()) - 1;
-            int next_idx = std::min(selected_index[i] + go2idx, max_idx);
-            double x_ = global_traj[next_idx].x;
-            double y_ = global_traj[next_idx].y;
-            
-            // Calculate the heading of the trajectory
-            double diff_x = x_ - x;
-            double diff_y = y_ - y;
-            double mu_ = calcHeading(diff_x, diff_y);
-
-            mu_ = (i == 0) ? continuous(mu_, car_state.psi) : continuous(mu_, heading_track[i - 1]);
-
-            heading_track[i] = mu_;
-            
-            // Predicted next position
-            p[0] = x + mpc_matrices.vx[i] * cos(mu_) * cfg.mpc.Ts;
-            p[1] = y + mpc_matrices.vx[i] * sin(mu_) * cfg.mpc.Ts;
-            
-            // Find the closest trajectory point to the predicted position
-            next_state = planner_tree.nnSearch(p);
-            next_state = (next_state <= selected_index[i]) ? selected_index[i] + 1 : next_state;
-
-            if (i != n_horizon)
-                selected_index[i + 1] = next_state; // std::min(next_state, static_cast<int>(planner.rows() - 2.0));
-
-            // Convert planner point to car frame
-            double translated_x = x - reference_x;
-            double translated_y = y - reference_y;
-            double rotated_x = translated_x * cos_ref + translated_y * sin_ref;
-            double rotated_y = -translated_x * sin_ref + translated_y * cos_ref;
-            
-            planner_traj_frame[i] = Vector2d(rotated_x, rotated_y);
-            
-            // Calculate the heading of the trajectory, with two consecutive points
-            double consec_diff_x = global_traj[selected_index[i]+1].x - global_traj[selected_index[i]].x;
-            double consec_diff_y = global_traj[selected_index[i]+1].y - global_traj[selected_index[i]].y;
-            double consec_mu = calcHeading(consec_diff_x, consec_diff_y);
-            
-            consec_mu = (i == 0) ? continuous(consec_mu, car_state.psi) : continuous(consec_mu, consec_heading_track[i - 1]);
-
-            consec_heading_track[i] = consec_mu;
-            
-            // Update heading to trajectory frame
-            double transformed_heading = consec_heading_track[i] - reference_heading;
-            transformed_heading = (i == 0) ? continuous(transformed_heading, reference_heading) : continuous(transformed_heading, prev_heading);
-            prev_heading = transformed_heading;
-                                                
-            // Fill the x_ref matrix
-            Eigen::MatrixXd ref_matrix(n_states, 1);
-            ref_matrix << planner_traj_frame[i](1),     // y
-                        0,                              // vy
-                        transformed_heading,        // Headin respect to reference frame
-                        global_traj[selected_index[i]].w,  // Yaw rate
-                        0,                              // delta
-                        0;                              // delta dot
-
-            x_ref_aux.block(i * n_states, 0, n_states, 1) = ref_matrix; // TODO: Really necessary?
-
-        }
-
-        // Fill x_ref vector [x_ref1 x_ref2 ... x_refN]^T, without x_ref0 which is irrelevant
-        mpc_matrices.x_ref = x_ref_aux.block(n_states, 0, n_states * n_horizon, 1);
-
-        if (cfg.save_debug){
-            appendSingleRowToCSV(mpc_matrices.x_ref, "x_ref");
-        }
-        
-        // Print the first 10 values of x_ref
-        if (cfg.verbose) std::cout << "First 10 values of x_ref: \n" << mpc_matrices.x_ref.block(0, 0, 10, 1).transpose() << std::endl;
-    }
-
     // Builds weights matrices
     void createWeights()
     {
@@ -286,21 +167,18 @@ class MPC {
 
         for (size_t i = 0; i < n_horizon; ++i){
             if (i < local_ref.size()){
-                mpc_matrices.x_ref.segment(i * n_states, n_states) << local_ref[i].y,           // y
-                                                                        local_ref[i].vy,        // vy
-                                                                        local_ref[i].psi,       // phi
-                                                                        local_ref[i].r,         // r
-                                                                        local_ref[i].delta,     // delta
-                                                                        local_ref[i].delta_dot; // delta dot
+                mpc_matrices.x_ref.segment(i * n_states, n_states) << local_ref[i].y,         // y
+                                                                      local_ref[i].vy,        // vy
+                                                                      local_ref[i].psi,       // phi
+                                                                      local_ref[i].r,         // r
+                                                                      local_ref[i].delta,     // delta
+                                                                      local_ref[i].delta_dot; // delta dot
+                mpc_matrices.vx[i] = local_ref[i].vx;
             }else{
                 mpc_matrices.x_ref.segment(i * n_states, n_states) = mpc_matrices.x_ref.segment((i - 1) * n_states, n_states);
+                mpc_matrices.vx[i] = mpc_matrices.vx[i-1];
             }
         }
-
-        // TODO: Debug only
-        std::string ref_path = "/home/andreu/ros_ws/src/as/control/ltv_mpc/test/data/x_ref.csv";
-        mpc_matrices.x_ref = loadCsvRowAsEigen(ref_path, 1);
-        std::cout << "Size of x_ref: " << mpc_matrices.x_ref << std::endl;
 
         if(cfg.verbose){
             std::cout << "Reference trajectory (first 5 points): " << std::endl;
@@ -320,62 +198,30 @@ class MPC {
         PROFC_NODE_
 
         // x_0 vector
-        // Convert car state to reference frame
-        double translated_x = car_state.x - reference_x;
-        double translated_y = car_state.y - reference_y;
-        double rotated_y = -translated_x * sin_ref + translated_y * cos_ref;
-        double heading_rotated = car_state.psi - reference_heading;
-        heading_rotated = continuous(heading_rotated, 0.0);
-
-        if (firstIteration)
-        last_delta = car_state.delta;
-        
-        delta_dot_filtered += alpha_delta_dot * ((car_state.delta - last_delta) / cfg.mpc.Ts - delta_dot_filtered);
-        
-        std::cout << "alpha_delta_dot: " << alpha_delta_dot << std::endl;
-
-        // Fill initial/measured state
-        m.x0(0) = rotated_y;           // y
-        m.x0(1) = car_state.vy;        // vy
-        m.x0(2) = heading_rotated;     // heading respect the reference frame
-        m.x0(3) = car_state.r;        // yaw rate
-        m.x0(4) = car_state.delta;        // Steering
-        m.x0(5) = delta_dot_filtered;  // Filtered steering dot
-
-        std::cout << m.x0 << std::endl;
-
-        last_delta = car_state.delta;
-
-        vector<double> prev_delta(n_horizon);
-        prev_delta[0] = car_state.delta;
-        if (firstIteration){
-            for (size_t i = 1; i < n_horizon; ++i){
-                prev_delta[i] = min(max(car_state.delta, -25.0 * M_PI / 180.0), 25.0 * M_PI / 180.0);
-            }
-        }else{
-            for (size_t i = 1; i < n_horizon - 1; ++i){
-                prev_delta[i] = min(max(prev_states[i+1].delta, -25.0 * M_PI / 180.0), 25.0 * M_PI / 180.0);
-            }
-            prev_delta[n_horizon-1] = min(max(prev_states[n_horizon-1].delta, -25.0 * M_PI / 180.0), 25.0 * M_PI / 180.0);
-        }
+        m.x0 << car_state.y,          // y
+                car_state.vy,         // vy
+                car_state.psi,        // phi
+                car_state.r,          // r
+                car_state.delta,      // delta
+                car_state.delta_dot;  // delta dot
 
         {PROFC_NODE("createModelMatrices_first")
         for (size_t i = 0; i < n_horizon; ++i){
 
-            if (i < prev_states.size()){
-                // x_prev vector
+            // x_prev vector
+            if (i < prev_states.size()-1){
                 m.x_prev.segment(i * n_states, n_states) << prev_states[i+1].y,         // y
                                                             prev_states[i+1].vy,        // vy
-                                                            m.x_ref[i*6+2],       // phi
+                                                            prev_states[i+1].psi,       // psi
                                                             prev_states[i+1].r,         // r
-                                                            prev_delta[i],     // delta
+                                                            prev_states[i+1].delta,     // delta
                                                             prev_states[i+1].delta_dot; // delta dot
             }else{
                 m.x_prev.segment(i * n_states, n_states) = m.x_prev.segment((i - 1) * n_states, n_states);
             }
 
             // u_prev vector
-            if (i < prev_controls.size()){
+            if (i < prev_controls.size()-1){
                 m.u_prev(i * n_controls) = prev_controls[i+1].steering;   // steering
                 m.u_prev(i * n_controls +1) = prev_controls[i+1].mz;      // mz
             }else{
@@ -390,9 +236,9 @@ class MPC {
 
             if(cfg.verbose){
                 std::cout << "At step " << i << " : vx: " << m.vx[i] << " phi: " << m.x_prev[i*6+2] << " delta: " << m.x_prev[i*6+4] << std::endl;
-                std::cout << "Ad[" << i << "]:\n" << m.Ad[i] << std::endl;
-                std::cout << "Bd[" << i << "]:\n" << m.Bd[i] << std::endl;
-                std::cout << "Cd[" << i << "]:\n" << m.Cd[i].transpose() << std::endl;
+                // std::cout << "Ad[" << i << "]:\n" << m.Ad[i] << std::endl;
+                // std::cout << "Bd[" << i << "]:\n" << m.Bd[i] << std::endl;
+                // std::cout << "Cd[" << i << "]:\n" << m.Cd[i].transpose() << std::endl;
             }
 
             // Sanity check
@@ -486,19 +332,6 @@ class MPC {
 
         g.noalias() = (2 * (m.x0.transpose() * m.T.transpose() - m.x_ref.transpose()) * Q * m.S).transpose();
 
-        // Sanity checks
-        // if(!H.allFinite()){
-        //     std::cerr << "Error: H matrix contains non-finite values" << std::endl;
-        // }
-        // if(!g.allFinite()){
-        //     std::cerr << "Error: g vector contains non-finite values" << std::endl;
-        // }
-        // Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(H);
-        // double min_eig = eig.eigenvalues().minCoeff();
-        // if (min_eig <= 0){
-        //     std::cerr << "Error: H matrix is not positive definite, min eigenvalue: " << min_eig << std::endl;
-        // }
-
         // Solution without constraints
             u_opt = H.ldlt().solve(-g); // Cholesk variant (for positive and negative defined matrices)
             // u_opt = H.llt().solve(-g); // Cholesky decomposition (need to find if H is positive define)
@@ -532,7 +365,7 @@ class MPC {
     }
 
     // Predict the following states given initial state and controls
-    States predict_states(const State &x_0, const Controls &controls, const ModelMatrices &m){
+    States predict_states(const State &x_0, const Controls &controls, const ModelMatrices &m, const States& x_ref){
         PROFC_NODE_
 
         States predicted_states(n_horizon);
@@ -558,15 +391,8 @@ class MPC {
             predicted_states[i].delta = x_pred(i * n_states + 4);
             predicted_states[i].delta_dot = x_pred(i * n_states + 5);
 
-            predicted_states[i].vx = m.vx[i]; // vx is not predicted by the model
-            predicted_states[i].x = 0.025 * 5 * i;
-        }
-
-        std::cout << "AFTER SOLVING:" << std::endl;
-        std::cout << "Y0: " << x0_vec(1) << " Delta: " << x0_vec(5) << std::endl; 
-        for(size_t i = 0; i < 5; i++){
-            std::cout << "Control: " << controls[i].steering << std::endl;
-            std::cout << "Y: " << predicted_states[i].y << " Delta: " << predicted_states[i].delta << std::endl;
+            predicted_states[i].vx = m.vx[i+1]; // vx is not predicted by the model
+            predicted_states[i].x = x_ref[i].x;
         }
 
         if(cfg.save_debug){
@@ -835,18 +661,18 @@ class MPC {
 
     ~MPC() = default;
 
-    void compute_mpc(const State &car_state, const Control u_prev_iter, const Trajectory &global_traj, const States &x_prev, const Controls &u_prev, States &predicted_states, Controls &optimal_controls)
+    void compute_mpc(const State &car_state, const Control u_prev_iter, const States &local_ref, const States &x_prev, const Controls &u_prev, States &predicted_states, Controls &optimal_controls)
     {
         PROFC_NODE_
 
         if (cfg.verbose){
             std::cout << "Current state: y: " << car_state.y << ", vy: " << car_state.vy << ", psi: " << car_state.psi << ", r: " << car_state.r << ", delta: " << car_state.delta << ", delta_dot: " << car_state.delta_dot << std::endl;
-            // std::cout << "Size of local reference: " << local_ref.size() << std::endl;
+            std::cout << "Size of local reference: " << local_ref.size() << std::endl;
             std::cout << "Size of previous states: " << x_prev.size() << std::endl;
             std::cout << "Size of previous controls: " << u_prev.size() << std::endl;
         }
 
-        findReferences(global_traj, car_state);
+        createReference(local_ref);
         createModelMatrices(car_state, x_prev, u_prev, mpc_matrices);
         optimal_controls = solve(mpc_matrices, u_prev_iter);
 
@@ -855,7 +681,7 @@ class MPC {
             optimal_controls[i].steering = steeringSafety(optimal_controls[i].steering, car_state);
         }
 
-        predicted_states = predict_states(car_state, optimal_controls, mpc_matrices);
+        predicted_states = predict_states(car_state, optimal_controls, mpc_matrices, local_ref);
         firstIteration = false;
     }
 
@@ -864,7 +690,7 @@ class MPC {
         PROFC_NODE_
 
         createModelMatrices(x_0, x_prev, u_prev, evaluator_matrices);
-        States prediction = predict_states(x_0, controls, evaluator_matrices);
+        States prediction = predict_states(x_0, controls, evaluator_matrices, x_prev);
 
         return prediction;
     }
