@@ -64,7 +64,7 @@ class MPC {
     Eigen::MatrixXd temp6x6;
     Eigen::VectorXd wk;
 
-    // Prediction
+    // Condensed model
     Eigen::MatrixXd S;
     Eigen::MatrixXd T;
     Eigen::VectorXd W;
@@ -72,6 +72,10 @@ class MPC {
     // Solve matrices
     Eigen::MatrixXd H;
     Eigen::VectorXd g, u_opt, d;
+
+    // Prediction
+    Eigen::VectorXd x_pred;
+    Eigen::VectorXd u_vec;
 
     // Flags
     bool firstIteration = true;
@@ -172,10 +176,6 @@ class MPC {
                 std::cout << "Point " << i << ": y: " << local_ref[i].y << ", vy: " << local_ref[i].vy << ", psi: " << local_ref[i].psi << ", r: " << local_ref[i].r << ", delta: " << local_ref[i].delta << ", delta_dot: " << local_ref[i].delta_dot << std::endl;
             }
         }
-
-        if(cfg.save_debug){
-            appendSingleRowToCSV(x_ref, "x_ref");
-        }
     }
     
     // Builds the matrixes x_0, x_prev, u_prev, T, S and W. Saves them to Model Matrixes.
@@ -185,11 +185,11 @@ class MPC {
 
         // x_0 vector
         x0 << car_state.y,          // y
-                car_state.vy,         // vy
-                car_state.psi,        // phi
-                car_state.r,          // r
-                car_state.delta,      // delta
-                car_state.delta_dot;  // delta dot
+              car_state.vy,         // vy
+              car_state.psi,        // phi
+              car_state.r,          // r
+              car_state.delta,      // delta
+              car_state.delta_dot;  // delta dot
 
         {PROFC_NODE("createModelMatrices_first")
         for (size_t i = 0; i < n_horizon; ++i){
@@ -292,15 +292,6 @@ class MPC {
             std::cout << "Size of S: " << S.rows() << "x" << S.cols() << std::endl;
             std::cout << "Size of W: " << W.size() << std::endl;
         }
-
-        if(cfg.save_debug){
-            appendSingleRowToCSV(x_prev, "x_prev");
-            appendSingleRowToCSV(vx, "vx");
-            appendSingleRowToCSV(u_prev, "u_prev");
-            appendSingleRowToCSV(T, "T");
-            appendSingleRowToCSV(S, "S");
-            appendSingleRowToCSV(W, "W");
-        }
     }
 
     // Solve the optimisation problem
@@ -339,14 +330,6 @@ class MPC {
             }
         }
 
-        if(cfg.save_debug){
-            appendSingleRowToCSV(x0, "x0");
-            appendSingleRowToCSV(d, "d");
-            appendSingleRowToCSV(H, "H");
-            appendSingleRowToCSV(g, "g");
-            appendSingleRowToCSV(u_opt, "u_opt");
-        }
-
         return optimal_controls;
     }
 
@@ -356,13 +339,7 @@ class MPC {
 
         States predicted_states(n_horizon);
 
-        Eigen::VectorXd x_pred(n_states*n_horizon);
-        Eigen::VectorXd u_vec(n_controls*n_horizon);
-        Eigen::VectorXd x0_vec(n_states);
-
-        x0_vec << x_0.y, x_0.vy, x_0.psi, x_0.r, x_0.delta, x_0.delta_dot;
         u_vec.setZero();
-
         for (size_t i = 0; i < cfg.mpc.n_horizon; ++i){
             u_vec(i * n_controls) = controls[i].steering;
             u_vec(i * n_controls + 1) = controls[i].mz;
@@ -380,10 +357,6 @@ class MPC {
 
             predicted_states[i].vx = vx[i+1]; // vx is not predicted by the model
             predicted_states[i].x = x_ref[i].x;
-        }
-
-        if(cfg.save_debug){
-            appendSingleRowToCSV(x_pred, "x_pred");
         }
 
         return predicted_states;
@@ -633,7 +606,7 @@ class MPC {
         temp6x6.resize(n_states, n_states);
         wk.resize(n_states);
 
-        // Perdiction
+        // Condensed model
         S.resize(n_horizon * n_states, n_horizon * n_controls);
         T.resize(n_horizon * n_states, n_states);
         W.resize(n_horizon * n_states); 
@@ -647,6 +620,10 @@ class MPC {
         u_opt.resize(n_horizon * n_controls);
         d.resize(n_horizon * n_controls);
 
+        // Prediction
+        x_pred.resize(n_horizon * n_states);
+        u_vec.resize(n_horizon * n_controls);
+
         createWeights();
 
         firstIteration = true;
@@ -657,7 +634,7 @@ class MPC {
 
     ~MPC() = default;
 
-    void compute_mpc(const State &car_state, const Control u_prev_iter, const States &local_ref, const States &x_prev, const Controls &u_prev, States &predicted_states, Controls &optimal_controls)
+    void compute_mpc(const State &car_state, const Control last_control, const States &local_ref, const States &prev_states, const Controls &prev_controls, States &predicted_states, Controls &optimal_controls)
     {
         PROFC_NODE_
 
@@ -665,13 +642,13 @@ class MPC {
             std::cout << "--- Compute MPC ---" << std::endl;
             std::cout << "Current state: y: " << car_state.y << ", vy: " << car_state.vy << ", psi: " << car_state.psi << ", r: " << car_state.r << ", delta: " << car_state.delta << ", delta_dot: " << car_state.delta_dot << std::endl;
             std::cout << "Size of local reference: " << local_ref.size() << std::endl;
-            std::cout << "Size of previous states: " << x_prev.size() << std::endl;
-            std::cout << "Size of previous controls: " << u_prev.size() << std::endl;
+            std::cout << "Size of previous states: " << prev_states.size() << std::endl;
+            std::cout << "Size of previous controls: " << prev_controls.size() << std::endl;
         }
 
         createReference(local_ref);
-        createModelMatrices(car_state, x_prev, u_prev);
-        optimal_controls = solve(u_prev_iter);
+        createModelMatrices(car_state, prev_states, prev_controls);
+        optimal_controls = solve(last_control);
 
         // Ensure safety
         for (size_t i = 0; i < optimal_controls.size(); ++i){
@@ -681,26 +658,49 @@ class MPC {
         predicted_states = predict_states(car_state, optimal_controls, local_ref);
         firstIteration = false;
 
-        if(cfg.save_debug){
-
-        }
+        // if(cfg.save_debug){
+        //     appendSingleRowToCSV(x0, "x0");
+        //     appendSingleRowToCSV(x_ref, "x_ref");
+        //     appendSingleRowToCSV(x_prev, "x_prev");
+        //     appendSingleRowToCSV(vx, "vx");
+        //     appendSingleRowToCSV(u_prev, "u_prev");
+        //     appendSingleRowToCSV(T, "T");
+        //     appendSingleRowToCSV(S, "S");
+        //     appendSingleRowToCSV(W, "W");
+        //     appendSingleRowToCSV(d, "d");
+        //     appendSingleRowToCSV(H, "H");
+        //     appendSingleRowToCSV(g, "g");
+        //     appendSingleRowToCSV(u_opt, "u_opt");
+        //     appendSingleRowToCSV(x_pred, "x_pred");
+        // }
     }
 
-    float compute_prediction(const State &x_0, const Controls &controls, const States &states)
+    float compute_prediction(const State &first_state, const Controls &controls, const States &states)
     {
         PROFC_NODE_
 
         if (cfg.verbose){
             std::cout << "--- Compute Prediction ---" << std::endl;
-            std::cout << "Current state: y: " << x_0.y << ", vy: " << x_0.vy << ", psi: " << x_0.psi << ", r: " << x_0.r << ", delta: " << x_0.delta << ", delta_dot: " << x_0.delta_dot << std::endl;
+            std::cout << "Current state: y: " << first_state.y << ", vy: " << first_state.vy << ", psi: " << first_state.psi << ", r: " << first_state.r << ", delta: " << first_state.delta << ", delta_dot: " << first_state.delta_dot << std::endl;
             std::cout << "Size of previous states: " << states.size() << std::endl;
             std::cout << "Size of previous controls: " << controls.size() << std::endl;
         }
 
-        createModelMatrices(x_0, states, controls);
-        States prediction = predict_states(x_0, controls, states);
+        createModelMatrices(first_state, states, controls);
+        States prediction = predict_states(first_state, controls, states);
 
         double model_error = compute_model_error(prediction, states);
+
+        if(cfg.save_debug){
+            appendSingleRowToCSV(x0, "x0");
+            appendSingleRowToCSV(x_prev, "x_prev");
+            appendSingleRowToCSV(vx, "vx");
+            appendSingleRowToCSV(u_prev, "u_prev");
+            appendSingleRowToCSV(T, "T");
+            appendSingleRowToCSV(S, "S");
+            appendSingleRowToCSV(W, "W");
+            appendSingleRowToCSV(x_pred, "x_pred");
+        }
 
         return model_error;
     }

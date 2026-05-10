@@ -2,7 +2,7 @@ as/c:
   fuzzy_mpc:
     ros__parameters:
 
-      verbose: true
+      verbose: false
       save_debug: false
       profile: true
       debug_path: "/src/as/control/fuzzy_mpc/debug/csv"  # Where in your ws to save csv
