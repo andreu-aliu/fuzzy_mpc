@@ -14,6 +14,7 @@
 
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "std_msgs/msg/float64.hpp"
 
 
 inline void fill_config(Config& cfg, rclcpp::Node* node)
@@ -27,9 +28,10 @@ inline void fill_config(Config& cfg, rclcpp::Node* node)
     cfg.share_path = ament_index_cpp::get_package_share_directory("fuzzy_mpc") + "/";
     
     // MPC parameters
-    node->get_parameter("MPC.n_horizon",  cfg.mpc.n_horizon);
-    node->get_parameter("MPC.Ts",         cfg.mpc.Ts);
-    node->get_parameter("MPC.latency",    cfg.mpc.latency);
+    node->get_parameter("MPC.n_horizon",        cfg.mpc.n_horizon);
+    node->get_parameter("MPC.n_evaluation",     cfg.mpc.n_evaluation);
+    node->get_parameter("MPC.Ts",               cfg.mpc.Ts);
+    node->get_parameter("MPC.latency",          cfg.mpc.latency);
 
     node->get_parameter("MPC.max_steering",     cfg.mpc.max_steering);
     node->get_parameter("MPC.max_steering_dot", cfg.mpc.max_steering_dot);
@@ -37,7 +39,7 @@ inline void fill_config(Config& cfg, rclcpp::Node* node)
 
     node->get_parameter("MPC.scale_y",       cfg.mpc.scale_y);
     node->get_parameter("MPC.scale_vy",      cfg.mpc.scale_vy);
-    node->get_parameter("MPC.scale_phi",     cfg.mpc.scale_phi);
+    node->get_parameter("MPC.scale_psi",     cfg.mpc.scale_psi);
     node->get_parameter("MPC.scale_r",       cfg.mpc.scale_r);
     node->get_parameter("MPC.scale_st",      cfg.mpc.scale_st);
     node->get_parameter("MPC.scale_dst",     cfg.mpc.scale_dst);
@@ -83,7 +85,7 @@ inline void fill_config(Config& cfg, rclcpp::Node* node)
     node->get_parameter("Topics.InPlanner",   cfg.topics.in_planner);
     node->get_parameter("Topics.InVelocities",cfg.topics.in_velocity);
     node->get_parameter("Topics.OutSteering", cfg.topics.out_steering);
-    node->get_parameter("Topics.OutDuration", cfg.topics.out_duration);
+    node->get_parameter("Topics.OutModelError", cfg.topics.out_model_error);
 
     node->get_parameter("Topics.Vis.PredictedSteering", cfg.topics.vis.predictedSteering);
     node->get_parameter("Topics.Vis.PredictedPath",     cfg.topics.vis.predictedPath);
@@ -277,4 +279,13 @@ visualization_msgs::msg::MarkerArray steeringMsg(const Eigen::MatrixXd &state){
         markerArray.markers.push_back(marker);
     }
     return markerArray;
+}
+
+std_msgs::msg::Float64 floatMsg(const float &value){
+
+    std_msgs::msg::Float64 msg;
+
+    msg.data = value;
+
+    return msg;
 }

@@ -102,7 +102,7 @@ class MPC {
         Eigen::VectorXd diag_values(n_states);
         diag_values << cfg.mpc.q_lat / pow(cfg.mpc.scale_y, 2),
                        cfg.mpc.q_vy / pow(cfg.mpc.scale_vy, 2), 
-                       cfg.mpc.q_phi / pow(cfg.mpc.scale_phi, 2), 
+                       cfg.mpc.q_phi / pow(cfg.mpc.scale_psi, 2), 
                        cfg.mpc.q_r / pow(cfg.mpc.scale_r, 2), 
                        cfg.mpc.q_delta / pow(cfg.mpc.scale_st, 2), 
                        cfg.mpc.q_delta_dot / pow(cfg.mpc.scale_dst, 2);
@@ -113,7 +113,7 @@ class MPC {
         q_diag.segment((n_horizon-1)*n_states, n_states) << 
                 cfg.mpc.p_lat / pow(cfg.mpc.scale_y, 2), 
                 cfg.mpc.p_vy / pow(cfg.mpc.scale_vy, 2), 
-                cfg.mpc.p_phi / pow(cfg.mpc.scale_phi, 2), 
+                cfg.mpc.p_phi / pow(cfg.mpc.scale_psi, 2), 
                 cfg.mpc.p_r / pow(cfg.mpc.scale_r, 2), 
                 cfg.mpc.p_delta / pow(cfg.mpc.scale_st, 2), 
                 cfg.mpc.p_delta_dot / pow(cfg.mpc.scale_dst, 2);
@@ -235,7 +235,7 @@ class MPC {
             model->getDiscreteMatrices(prev_state, prev_u, m.vx[i], m.Ad[i], m.Bd[i], m.Cd[i]);
 
             if(cfg.verbose){
-                std::cout << "At step " << i << " : vx: " << m.vx[i] << " phi: " << m.x_prev[i*6+2] << " delta: " << m.x_prev[i*6+4] << std::endl;
+                // std::cout << "At step " << i << " : vx: " << m.vx[i] << " phi: " << m.x_prev[i*6+2] << " delta: " << m.x_prev[i*6+4] << std::endl;
                 // std::cout << "Ad[" << i << "]:\n" << m.Ad[i] << std::endl;
                 // std::cout << "Bd[" << i << "]:\n" << m.Bd[i] << std::endl;
                 // std::cout << "Cd[" << i << "]:\n" << m.Cd[i].transpose() << std::endl;
@@ -376,7 +376,8 @@ class MPC {
 
         x0_vec << x_0.y, x_0.vy, x_0.psi, x_0.r, x_0.delta, x_0.delta_dot;
         u_vec.setZero();
-        for (size_t i = 0; i < controls.size(); ++i){
+
+        for (size_t i = 0; i < cfg.mpc.n_horizon; ++i){
             u_vec(i * n_controls) = controls[i].steering;
             u_vec(i * n_controls + 1) = controls[i].mz;
         }
@@ -404,36 +405,6 @@ class MPC {
 
     /////////////////////////////////////////////////////////////////////////
     //-------------------------- Auxiliar functions  ----------------------//
-
-    // Calculate the heading angle based on x and y differences
-    double calcHeading(const double &x, const double &y){
-        if (x >= 0)
-            return atan2(y, x);
-        else if (y > 0)
-            return M_PI - atan2(y, fabs(x));
-        else
-            return -M_PI + (atan2(fabs(y), fabs(x)));
-    }
-
-    // Ensure continuity of angles
-    double continuous(const double &psi, const double &psi_last){
-        double diff = psi - psi_last;
-
-        int k = 0;
-        while (abs(diff) > (2 * M_PI - 1)){
-            if (k > 12){
-                k = 0;
-                break;
-            }
-            if (k > 0){
-                k = -k;
-            }else if (k <= 0){
-                k = -k + 1;
-            }
-            diff = psi - psi_last + 2 * M_PI * k;
-        }
-        return psi + 2 * M_PI * k;
-    }
 
     // Create kd-tree from the planner points
     void createKDTree(Trajectory traj){
@@ -481,7 +452,8 @@ class MPC {
     }
     
     // Safety function for steering command
-    double steeringSafety(const double &steering, const State &car_state){
+    double steeringSafety(const double &steering, const State &car_state)
+    {
         if (std::isnan(steering))
             return 0.0;
         else if (car_state.vx < 0.3)
@@ -492,6 +464,65 @@ class MPC {
             return -cfg.mpc.max_steering;
         else
             return steering;
+    }
+
+    // Compute model error
+    double compute_model_error(const States pred, const States meas)
+    {
+        double err_y = 0.0;
+        double err_vy = 0.0; 
+        double err_psi = 0.0;
+        double err_r = 0.0;
+        double err_delta = 0.0;
+
+        size_t n_pred = pred.size();
+        size_t n_meas = meas.size();
+        size_t n = std::min(n_pred, n_meas);
+
+        std::cout << "Computing model error for " << n << " states" << std::endl; 
+
+        if(n_pred != n_meas){
+            std::cerr << "Error computing model error: sizes don't match: pred(" << pred.size() << " meas(" << meas.size() << ")" <<  std::endl;
+        }
+
+        for(size_t i = 0; i < n; i++){
+
+            double dy     = pred[i].y     - meas[i].y;
+            double dvy    = pred[i].vy    - meas[i].vy;
+            double dpsi   = wrap_angle(pred[i].psi - meas[i].psi);
+            double dr     = pred[i].r     - meas[i].r;
+            double ddelta = pred[i].delta - meas[i].delta;
+
+            err_y     += (dy * dy)         / (cfg.mpc.scale_y   * cfg.mpc.scale_y);
+            err_vy    += (dvy * dvy)       / (cfg.mpc.scale_vy  * cfg.mpc.scale_vy);
+            err_psi   += (dpsi * dpsi)     / (cfg.mpc.scale_psi * cfg.mpc.scale_psi);
+            err_r     += (dr * dr)         / (cfg.mpc.scale_r   * cfg.mpc.scale_r);
+            err_delta += (ddelta * ddelta) / (cfg.mpc.scale_st  * cfg.mpc.scale_st);
+        }
+
+        double error = err_y + err_vy + err_psi + err_r + err_delta;
+
+        if(cfg.verbose){
+            std::cout << "Model error across " << n << " steps: " << error << std::endl;
+            std::cout << "\t err_y: " << err_y << std::endl;
+            std::cout << "\t err_vy: " << err_vy << std::endl;
+            std::cout << "\t err_psi: " << err_psi << std::endl;
+            std::cout << "\t err_r: " << err_r << std::endl;
+            std::cout << "\t err_delta: " << err_delta << std::endl;
+        }
+
+        return error;
+    }
+
+    // Wrap angle for model evaluation
+    double wrap_angle(double a)
+    {
+        a = std::fmod(a + M_PI, 2.0 * M_PI);
+
+        if(a < 0)
+            a += 2.0 * M_PI;
+
+        return a - M_PI;
     }
 
     // Debugging function to append a single row to a CSV file (vector of doubles)
@@ -666,6 +697,7 @@ class MPC {
         PROFC_NODE_
 
         if (cfg.verbose){
+            std::cout << "--- Compute MPC ---" << std::endl;
             std::cout << "Current state: y: " << car_state.y << ", vy: " << car_state.vy << ", psi: " << car_state.psi << ", r: " << car_state.r << ", delta: " << car_state.delta << ", delta_dot: " << car_state.delta_dot << std::endl;
             std::cout << "Size of local reference: " << local_ref.size() << std::endl;
             std::cout << "Size of previous states: " << x_prev.size() << std::endl;
@@ -685,14 +717,23 @@ class MPC {
         firstIteration = false;
     }
 
-    States compute_prediction(const State &x_0, const Controls controls, const States &x_prev, const Controls &u_prev)
+    float compute_prediction(const State &x_0, const Controls &controls, const States &states)
     {
         PROFC_NODE_
 
-        createModelMatrices(x_0, x_prev, u_prev, evaluator_matrices);
-        States prediction = predict_states(x_0, controls, evaluator_matrices, x_prev);
+        if (cfg.verbose){
+            std::cout << "--- Compute Prediction ---" << std::endl;
+            std::cout << "Current state: y: " << x_0.y << ", vy: " << x_0.vy << ", psi: " << x_0.psi << ", r: " << x_0.r << ", delta: " << x_0.delta << ", delta_dot: " << x_0.delta_dot << std::endl;
+            std::cout << "Size of previous states: " << states.size() << std::endl;
+            std::cout << "Size of previous controls: " << controls.size() << std::endl;
+        }
 
-        return prediction;
+        createModelMatrices(x_0, states, controls, evaluator_matrices);
+        States prediction = predict_states(x_0, controls, evaluator_matrices, states);
+
+        double model_error = compute_model_error(prediction, states);
+
+        return model_error;
     }
 
     void update_config()

@@ -15,7 +15,8 @@ struct Config{
     // MPC
     struct MPC{
         double Ts;
-        int n_horizon;      // prediction horizon        
+        int n_horizon;      // prediction horizon
+        int n_evaluation;   // Evaluation horizon
         double latency;     // actuation latency [s]
 
         // Limits
@@ -26,7 +27,7 @@ struct Config{
         // scalings
         double scale_y;
         double scale_vy;
-        double scale_phi;
+        double scale_psi;
         double scale_r;
         double scale_st;
         double scale_dst;
@@ -78,7 +79,7 @@ struct Config{
         std::string in_planner;      // input trajectory from planner
         std::string in_velocity;     // input velocity reference from PID
         std::string out_steering;    // output steering command
-        std::string out_duration;    // output duration of the MPC computation
+        std::string out_model_error; // output model error from previous n_horizon states
 
         struct Visualization{
             std::string predictedSteering; // predicted steering visualization

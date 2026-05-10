@@ -2,14 +2,15 @@ as/c:
   fuzzy_mpc:
     ros__parameters:
 
-      verbose: false
+      verbose: true
       save_debug: false
       profile: true
       debug_path: "/src/as/control/fuzzy_mpc/debug/csv"  # Where in your ws to save csv
       
       MPC:
         Ts: 0.02          # [s] Sampling time (must be trained Ts for ANFIS model)
-        n_horizon: 60     # Number of steps in the horizon        latency: 0.0      # [s] Latency to compensate for in the MPC
+        n_horizon: 60     # Number of steps in the horizon
+        n_evaluation: 60  # Number of steps to evaluate model error on
 
         # Limits
         max_steering: 0.436       # [rad] Maximum steering angle
@@ -19,7 +20,7 @@ as/c:
         # Scalings to normalize weights and state evaluation
         scale_y: 0.1      # [m]
         scale_vy: 0.1     # [m/s]
-        scale_phi: 0.05   # [rad]
+        scale_psi: 0.05   # [rad]
         scale_r: 0.05     # [rad/s]
         scale_st: 0.2     # [rad]
         scale_dst: 0.001  # [rad/Ts]
@@ -47,7 +48,7 @@ as/c:
         InPlanner: /as/c/locator
         InVelocities: /as/c/log_pid/velocity
         OutSteering: /as/c/steering
-        OutDuration: /as/c/mpc/debug/time
+        OutModelError: /as/c/mpc/model_error
         Vis:
           PredictedSteering:  /vis/predictedPath/steering
           PredictedPath:      /vis/predictedPath/path

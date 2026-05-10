@@ -15,6 +15,7 @@ class Manager : public rclcpp::Node{
 
     // Objects
     MPC mpc;
+    MPC evaluator;
     Trajectory global_trajectory;
     State base_state;
     States predicted_states;
@@ -23,10 +24,17 @@ class Manager : public rclcpp::Node{
     Controls optimal_controls;
     Control applied_control;
 
+    // For evaluator
+    double model_error;
+    size_t iters = 0;
+    std::deque<State> state_history;
+    std::deque<Control> control_history;
+
     // Publishers
     rclcpp::Publisher<cat_msgs::msg::CarCommands>::SharedPtr pubSteering;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pubPredictedSteering, pubPredictedHeading;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubReferencePath, pubPredictedPath;
+    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pubModelError;
 
     // Subscribers
     rclcpp::Subscription<cat_msgs::msg::CarState>::SharedPtr subState;
@@ -53,6 +61,7 @@ class Manager : public rclcpp::Node{
         std::cout << "Configuration Loaded" << std::endl;
 
         mpc.initialize();
+        evaluator.initialize();
 
         // TODO: Dynamic reconfigure
 
@@ -71,6 +80,7 @@ class Manager : public rclcpp::Node{
 
         // Publishers
         pubSteering = this->create_publisher<cat_msgs::msg::CarCommands>(cfg.topics.out_steering, 1);
+        pubModelError = this->create_publisher<std_msgs::msg::Float64>(cfg.topics.out_model_error, 1);
 
         pubPredictedHeading = this->create_publisher<visualization_msgs::msg::MarkerArray>(std::string(this->get_name()) + cfg.topics.vis.predictedHeading, 1);
         pubPredictedSteering = this->create_publisher<visualization_msgs::msg::MarkerArray>(std::string(this->get_name()) + cfg.topics.vis.predictedSteering, 1);
@@ -92,6 +102,7 @@ class Manager : public rclcpp::Node{
 
         if(planner_recieved){
             if(cfg.verbose) std::cout << "Planner received, running MPC" << std::endl;
+            iters ++;
             
             // Get reference in global coordinates
             std::vector<State> global_ref = build_reference(global_trajectory, global_state, base_state, cfg.mpc.Ts, cfg.mpc.n_horizon);
@@ -99,9 +110,6 @@ class Manager : public rclcpp::Node{
                 RCLCPP_ERROR(get_logger(), "MPC: Invalid global reference");
                 return;
             }
-
-            // Update MPC history
-            
 
             // Convert reference to local coordinates (first point of the trajectory)
             State local_state = global_to_local_state(global_state, base_state);
@@ -138,12 +146,34 @@ class Manager : public rclcpp::Node{
             double steering = applied_control.steering;
             pubSteering->publish(steerMsg(steering));
 
-            // Publish model error
-
-
             // Publish prediction visualization
             pubPredictedPath->publish(localPathMsg(predicted_states, local_state));
 
+            // Update history
+            state_history.push_back(global_state);
+            control_history.push_back(applied_control);
+
+            if(state_history.size() > cfg.mpc.n_evaluation)
+                state_history.pop_front();
+
+            if(control_history.size() > cfg.mpc.n_evaluation)
+                control_history.pop_front();
+
+            // Compute model error
+            if (state_history.size() == cfg.mpc.n_evaluation &&
+                control_history.size() == cfg.mpc.n_evaluation){
+                PROFC_NODE("Compute model error")
+
+                std::vector<State> state_vect(state_history.begin(), state_history.end());
+                std::vector<Control> control_vect(control_history.begin(), control_history.end());
+                std::cout << "Size of state_vect:" << state_vect.size() << std::endl;
+                std::cout << "Size of control_vect: " << control_vect.size() << std::endl;
+
+                model_error = evaluator.compute_prediction(state_history.front(), control_vect, state_vect);
+
+                pubModelError->publish(floatMsg(model_error));
+            }
+            
         }else{
             if(cfg.verbose)
                 RCLCPP_WARN(get_logger(), "MPC: No planner received yet");
