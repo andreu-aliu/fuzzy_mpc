@@ -166,10 +166,14 @@ class Manager : public rclcpp::Node{
 
                 std::vector<State> state_vect(state_history.begin(), state_history.end());
                 std::vector<Control> control_vect(control_history.begin(), control_history.end());
-                std::cout << "Size of state_vect:" << state_vect.size() << std::endl;
-                std::cout << "Size of control_vect: " << control_vect.size() << std::endl;
 
-                model_error = evaluator.compute_prediction(state_history.front(), control_vect, state_vect);
+                // Convert to local reference
+                std::vector<State> local_state_vect(cfg.mpc.n_horizon);
+                for (size_t i = 0; i < state_vect.size(); ++i){
+                    local_state_vect[i] = global_to_local_state(state_vect[i], state_vect[0]);
+                }
+
+                model_error = evaluator.compute_prediction(local_state_vect[0], control_vect, local_state_vect);
 
                 pubModelError->publish(floatMsg(model_error));
             }

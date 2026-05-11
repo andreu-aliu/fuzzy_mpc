@@ -183,7 +183,7 @@ class MPC {
     {
         PROFC_NODE_
 
-        // x_0 vector
+        // x0 vector
         x0 << car_state.y,          // y
               car_state.vy,         // vy
               car_state.psi,        // phi
@@ -686,6 +686,7 @@ class MPC {
             std::cout << "Size of previous controls: " << controls.size() << std::endl;
         }
 
+        createReference(states);
         createModelMatrices(first_state, states, controls);
         States prediction = predict_states(first_state, controls, states);
 
@@ -699,6 +700,7 @@ class MPC {
             appendSingleRowToCSV(T, "T");
             appendSingleRowToCSV(S, "S");
             appendSingleRowToCSV(W, "W");
+            appendSingleRowToCSV(u_vec, "u_opt");
             appendSingleRowToCSV(x_pred, "x_pred");
         }
 
