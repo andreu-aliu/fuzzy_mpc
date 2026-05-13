@@ -221,10 +221,10 @@ class MPC {
             model->getDiscreteMatrices(prev_state, prev_u, vx[i], Ad[i], Bd[i], Cd[i]);
 
             if(cfg.verbose){
-                // std::cout << "At step " << i << " : vx: " << vx[i] << " phi: " << x_prev[i*6+2] << " delta: " << x_prev[i*6+4] << std::endl;
-                // std::cout << "Ad[" << i << "]:\n" << Ad[i] << std::endl;
-                // std::cout << "Bd[" << i << "]:\n" << Bd[i] << std::endl;
-                // std::cout << "Cd[" << i << "]:\n" << Cd[i].transpose() << std::endl;
+                std::cout << "At step " << i << " : vx: " << vx[i] << " phi: " << x_prev[i*6+2] << " delta: " << x_prev[i*6+4] << std::endl;
+                std::cout << "Ad[" << i << "]:\n" << Ad[i] << std::endl;
+                std::cout << "Bd[" << i << "]:\n" << Bd[i] << std::endl;
+                std::cout << "Cd[" << i << "]:\n" << Cd[i].transpose() << std::endl;
             }
 
             // Sanity check
@@ -570,7 +570,7 @@ class MPC {
         std::cout << "Initializing MPC..." << std::endl;
 
         // Model
-        model = std::make_unique<LtvModel>();
+        model = std::make_unique<AnfisModel>(); // LtvModel
         model->initialize();
 
         // Save recurrent parameters

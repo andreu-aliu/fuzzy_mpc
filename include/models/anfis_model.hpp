@@ -79,7 +79,7 @@ public:
 
         // Resize
         Ad = Eigen::MatrixXd::Zero(6, 6);
-        Bd = Eigen::MatrixXd::Zero(6, 1);
+        Bd = Eigen::MatrixXd::Zero(6, 2);
         Cd = Eigen::VectorXd::Zero(6);
 
         // States
