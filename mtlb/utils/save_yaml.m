@@ -1,10 +1,10 @@
 % This script saves the anfis model matrices to yaml file format
 
-model_path = '../models/anfis_direct';
-model_list = {direct_anfis.r, direct_anfis.vy};
+model_path = '../models/anfis_delta';
+model_list = {anfis_delta.r, anfis_delta.vy};
 model_names = {"r", "vy"};
 
-input_norm = direct_anfis.norm;
+input_norm = anfis_delta.norm;
 
 if ~exist(model_path, 'dir')
     mkdir(model_path);

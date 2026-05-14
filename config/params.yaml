@@ -2,7 +2,7 @@ as/c:
   fuzzy_mpc:
     ros__parameters:
 
-      verbose: true
+      verbose: false
       save_debug: false
       profile: true
       debug_path: "/src/as/control/fuzzy_mpc/debug/csv"  # Where in your ws to save csv
@@ -25,7 +25,7 @@ as/c:
         scale_st: 0.2     # [rad]
         scale_dst: 0.001  # [rad/Ts]
         scale_mz: 1000.0  # [Nm]
-        scale_dmz: 0.001 # [Nm/Ts]
+        scale_dmz: 0.005 # [Nm/Ts]
 
       Car:
         m: 215.0      # Car's mass
