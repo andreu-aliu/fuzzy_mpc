@@ -3,6 +3,9 @@
 #include <yaml-cpp/yaml.h>
 #include <Eigen/Dense>
 #include <memory>
+#include <cmath>
+#include <array>
+#include <iostream>
 
 #include <as_lib/utils/Profiler.hpp>
 #include "utils/Config.hpp"
@@ -91,19 +94,66 @@ public:
         const double delta_dot = x(5);
 
         const double steering_cmd = u(0);
+        const double mz_cmd       = 0.0; // TODO: u(1);
 
-        // Normalize ANFIS input
-        Eigen::VectorXd anfis_input(5);
-        anfis_input << vy, r, vx, delta, 0.0;
+        // ANFIS input
+        Eigen::Vector<double, 5> anfis_input;
+        anfis_input << vy, r, vx, delta, mz_cmd;
 
+        // Detect extrapolation of trained inputs
+        bool extrapolated = false;
+        std::array<const char*, 5> labels = {"vy", "r", "vx", "st", "mz"};
+
+        for (int i = 0; i < 5; ++i)
+        {
+            if (anfis_input(i) < input_min(i) || anfis_input(i) > input_max(i))
+            {
+                extrapolated = true;
+            }
+        }
+
+        if (extrapolated && cfg.verbose)
+        {
+            std::cerr << "\n===== ANFIS EXTRAPOLATION DETECTED =====\n";
+
+            for (int i = 0; i < 5; ++i)
+            {
+                const bool out = anfis_input(i) < input_min(i) || anfis_input(i) > input_max(i);
+
+                std::cerr << labels[i]
+                        << ": value = " << anfis_input(i)
+                        << " | min = " << input_min(i)
+                        << " | max = " << input_max(i);
+
+                if (out)
+                    std::cerr << "  <-- OUT";
+
+                std::cerr << "\n";
+            }
+
+            std::cerr << "========================================\n\n";
+        }
+
+        // Clamp and normalize input
+        anfis_input = anfis_input.cwiseMax(input_min).cwiseMin(input_max);
         Eigen::VectorXd anfis_input_n = (anfis_input - input_mean).cwiseQuotient(input_std);
+
+        if(cfg.verbose){
+            std::cout << "ANFIS input (normalized): " << anfis_input_n.transpose() << std::endl;
+        }
 
         // =========================
         // Y kinematics
         // =========================
-        Ad(0,0) = 1.0;
-        Ad(0,1) = dt;
-        Ad(0,2) = vx * dt;
+        Ad(0, 0) = 1.0;
+        Ad(0, 1) = std::cos(psi) * dt;
+        Ad(0, 2) = (vx * std::cos(psi) - vy * std::sin(psi)) * dt;
+        Cd(0) = dt * (
+            vx * std::sin(psi)
+            + vy * std::cos(psi)
+            - Ad(0, 1) * vy
+            - Ad(0, 2) * psi
+        );
 
         // =========================
         // Psi kinematics
@@ -119,18 +169,17 @@ public:
 
         vy_model->getLinearModel(anfis_input_n, A_vy_n, b_vy_n);
 
-        Eigen::Matrix<double, 1, 5> A_vy =
-            A_vy_n.cwiseProduct(input_std.transpose());
+        Eigen::Matrix<double, 1, 5> A_vy = A_vy_n.cwiseQuotient(input_std.transpose());
 
-        double b_vy =
-            A_vy_n.cwiseProduct(input_mean.cwiseQuotient(input_std).transpose()).sum()
-            + b_vy_n;
+        const double b_vy = b_vy_n - A_vy_n.cwiseProduct(input_mean.cwiseQuotient(input_std).transpose()).sum();
 
-        Ad(1,1) = 1.0 + dt * A_vy(0);
-        Ad(1,3) = dt * A_vy(1);
-        Ad(1,4) = dt * A_vy(3);
+        Ad(1, 1) = A_vy(0) + 1.0;
+        Ad(1, 3) = A_vy(1);
+        Ad(1, 4) = A_vy(3);
 
-        Cd(1) = dt * (b_vy + A_vy(2) * vx);
+        Bd(1, 1) = A_vy(4);
+
+        Cd(1) = b_vy + A_vy(2) * vx;
 
         // =========================
         // ANFIS r dynamics
@@ -140,18 +189,17 @@ public:
 
         r_model->getLinearModel(anfis_input_n, A_r_n, b_r_n);
 
-        Eigen::Matrix<double, 1, 5> A_r =
-            A_r_n.cwiseProduct(input_std.transpose());
+        Eigen::Matrix<double, 1, 5> A_r = A_r_n.cwiseQuotient(input_std.transpose());
 
-        double b_r =
-            A_r_n.cwiseProduct(input_mean.cwiseQuotient(input_std).transpose()).sum()
-            + b_r_n;
+        const double b_r = b_r_n - A_r_n.cwiseProduct(input_mean.cwiseQuotient(input_std).transpose()).sum();
 
-        Ad(3,1) = dt * A_r(0);
-        Ad(3,3) = 1.0 + dt * A_r(1);
-        Ad(3,4) = dt * A_r(3);
+        Ad(3, 1) = A_r(0);
+        Ad(3, 3) = A_r(1) + 1.0;
+        Ad(3, 4) = A_r(3);
 
-        Cd(3) = dt * (b_r + A_r(2) * vx);
+        Bd(3, 1) = A_r(4);
+
+        Cd(3) = b_r + A_r(2) * vx;
 
         // =========================
         // Steering dynamics (2nd order)
@@ -168,15 +216,5 @@ public:
         Ad(5,5) = 1.0 - 2.0 * damp_ * omega_ * dt;
 
         Bd(5,0) = omega_ * omega_ * dt;
-
-        // =========================
-        // Identity terms (important!)
-        // =========================
-        Ad(1,1) += 1.0 - 1.0; // already included above
-        Ad(3,3) += 0.0;       // clarity
-
-        // Ensure diagonal ones where needed
-        Ad(1,1) += 0.0;
-        Ad(3,3) += 0.0;
     }
 };

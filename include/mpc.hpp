@@ -310,12 +310,12 @@ class MPC {
         g.noalias() = (2 * (x0.transpose() * T.transpose() - x_ref.transpose()) * Q * S).transpose();
 
         // Solution without constraints
-            u_opt = H.ldlt().solve(-g); // Cholesk variant (for positive and negative defined matrices)
+            // u_opt = H.ldlt().solve(-g); // Cholesk variant (for positive and negative defined matrices)
             // u_opt = H.llt().solve(-g); // Cholesky decomposition (need to find if H is positive define)
 
         // Solution with constraints using HPIPM solver
-            // solver.solve(H, g, S, T, x0);
-            // u_opt = solver.getSolution();
+            solver.solve(H, g, S, T, x0);
+            u_opt = solver.getSolution();
 
         Controls optimal_controls(n_horizon);
         for (size_t i = 0; i < n_horizon; ++i){
@@ -392,8 +392,6 @@ class MPC {
         size_t n_pred = pred.size();
         size_t n_meas = meas.size();
         size_t n = std::min(n_pred, n_meas);
-
-        std::cout << "Computing model error for " << n << " states" << std::endl; 
 
         if(n_pred != n_meas){
             std::cerr << "Error computing model error: sizes don't match: pred(" << pred.size() << " meas(" << meas.size() << ")" <<  std::endl;
@@ -658,21 +656,21 @@ class MPC {
         predicted_states = predict_states(car_state, optimal_controls, local_ref);
         firstIteration = false;
 
-        // if(cfg.save_debug){
-        //     appendSingleRowToCSV(x0, "x0");
-        //     appendSingleRowToCSV(x_ref, "x_ref");
-        //     appendSingleRowToCSV(x_prev, "x_prev");
-        //     appendSingleRowToCSV(vx, "vx");
-        //     appendSingleRowToCSV(u_prev, "u_prev");
-        //     appendSingleRowToCSV(T, "T");
-        //     appendSingleRowToCSV(S, "S");
-        //     appendSingleRowToCSV(W, "W");
-        //     appendSingleRowToCSV(d, "d");
-        //     appendSingleRowToCSV(H, "H");
-        //     appendSingleRowToCSV(g, "g");
-        //     appendSingleRowToCSV(u_opt, "u_opt");
-        //     appendSingleRowToCSV(x_pred, "x_pred");
-        // }
+        if(cfg.save_debug){
+            appendSingleRowToCSV(x0, "x0");
+            appendSingleRowToCSV(x_ref, "x_ref");
+            appendSingleRowToCSV(x_prev, "x_prev");
+            appendSingleRowToCSV(vx, "vx");
+            appendSingleRowToCSV(u_prev, "u_prev");
+            appendSingleRowToCSV(T, "T");
+            appendSingleRowToCSV(S, "S");
+            appendSingleRowToCSV(W, "W");
+            appendSingleRowToCSV(d, "d");
+            appendSingleRowToCSV(H, "H");
+            appendSingleRowToCSV(g, "g");
+            appendSingleRowToCSV(u_opt, "u_opt");
+            appendSingleRowToCSV(x_pred, "x_pred");
+        }
     }
 
     float compute_prediction(const State &first_state, const Controls &controls, const States &states)
@@ -693,15 +691,15 @@ class MPC {
         double model_error = compute_model_error(prediction, states);
 
         if(cfg.save_debug){
-            appendSingleRowToCSV(x0, "x0");
-            appendSingleRowToCSV(x_prev, "x_prev");
-            appendSingleRowToCSV(vx, "vx");
-            appendSingleRowToCSV(u_prev, "u_prev");
-            appendSingleRowToCSV(T, "T");
-            appendSingleRowToCSV(S, "S");
-            appendSingleRowToCSV(W, "W");
-            appendSingleRowToCSV(u_vec, "u_opt");
-            appendSingleRowToCSV(x_pred, "x_pred");
+            // appendSingleRowToCSV(x0, "x0");
+            // appendSingleRowToCSV(x_prev, "x_prev");
+            // appendSingleRowToCSV(vx, "vx");
+            // appendSingleRowToCSV(u_prev, "u_prev");
+            // appendSingleRowToCSV(T, "T");
+            // appendSingleRowToCSV(S, "S");
+            // appendSingleRowToCSV(W, "W");
+            // appendSingleRowToCSV(u_vec, "u_opt");
+            // appendSingleRowToCSV(x_pred, "x_pred");
         }
 
         return model_error;

@@ -15,7 +15,7 @@ as/c:
         # Limits
         max_steering: 0.436       # [rad] Maximum steering angle
         max_steering_dot: 1.396   # [rad/s] Maximum steering rate
-        max_mz: 100.0             # [Nm] Maximum moment around the vertical axis
+        max_mz: 10.0              # [Nm] Maximum moment around the vertical axis
 
         # Scalings to normalize weights and state evaluation
         scale_y: 0.1      # [m]
