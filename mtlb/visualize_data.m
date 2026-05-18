@@ -2,7 +2,7 @@ cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/
 clear all
 %% Setup
 
-data_path = "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG";
+data_path = "/home/andreu/SIMULATIONS/results_3/run_2/rosbag";
 
 %% Load data 
 data = read_ros2bag(data_path, 0.02);

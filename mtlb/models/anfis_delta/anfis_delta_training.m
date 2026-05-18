@@ -5,16 +5,16 @@ cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/
 clear all
 
 % List of data path (csv), start, end
-data_paths = {"/home/andreu/bcnemotorsport/data/simu/acceleration_3", [], [];
-              "/home/andreu/bcnemotorsport/data/simu/acceleration_9", [], [];
-              "/home/andreu/bcnemotorsport/data/simu/skidpad_10", [], [];
-              "/home/andreu/bcnemotorsport/data/simu/skidpad_13", [], [];
-              "/home/andreu/bcnemotorsport/data/simu/skidpad_15", [], [];
-              "/home/andreu/bcnemotorsport/data/simu/skidpad_5", [], [];
-              % "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG", [], [];
-              "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSI", [], [];
-              "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSS", [], [];
-              "/home/andreu/bcnemotorsport/data/simu/teleop", [], [];
+data_paths = {"/home/andreu/SIMULATIONS/results_3/run_2/rosbag", [], [];
+              "/home/andreu/SIMULATIONS/results_3/run_3/rosbag", [], [];
+              "/home/andreu/SIMULATIONS/results_3/run_4/rosbag", [], [];
+              "/home/andreu/SIMULATIONS/results_3/run_5/rosbag", [], [];
+              "/home/andreu/SIMULATIONS/results_3/run_6/rosbag", [], [];
+              "/home/andreu/SIMULATIONS/results_3/run_9/rosbag", [], [];
+              "/home/andreu/SIMULATIONS/results_3/run_10/rosbag", [], [];
+              "/home/andreu/SIMULATIONS/results_3/run_11/rosbag", [], [];
+              "/home/andreu/SIMULATIONS/results_3/run_12/rosbag", [], [];
+              "/home/andreu/SIMULATIONS/results_3/run_13/rosbag", [], [];
               };
 
 keep_factor = 5; % Keep one of every - samples
@@ -153,7 +153,7 @@ opt = genfisOptions("SubtractiveClustering");
     % opt.InputMembershipFunctionType = "gaussmf"; % gbellmf gaussmf trimf trapmf dsigmf psigmf pimf
 
     % SubtractiveClustering: 
-    opt.ClusterInfluenceRange = 0.5; %0.5
+    opt.ClusterInfluenceRange = 0.3; %0.5
 
 
 anfis_delta.r.init_fis = genfis(Xn_train, Y_train(:,2), opt);
@@ -197,7 +197,7 @@ save('models/anfis_delta/anfis_delta.mat','anfis_delta')
 %% Model insights
 
 % Model to evaluate
-fis = anfis_delta.vy.fis;
+fis = anfis_delta.r.fis;
 
 % Rules info
 fprintf("Number of rules: %d", numel(fis.Rules))

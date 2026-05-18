@@ -31,7 +31,7 @@ for i = 1:Ns
 end
 
 % STEERING
-steerSel  = select(bag,"Topic","/as/c/steering");
+steerSel  = select(bag,"Topic","/el/sensor/driver_inputs");
 steerMsgs = readMessages(steerSel);
 t_steer = steerSel.MessageList.Time;
 
@@ -61,7 +61,7 @@ Trr = zeros(Nt,1);
 for i = 1:Nt
     msg = tvMsgs{i};
 
-    mz(i)  = msg.desired_mz;
+    mz(i)  = msg.actual_mz;
     Tfl(i) = msg.front_left_torque;
     Tfr(i) = msg.front_right_torque;
     Trl(i) = msg.rear_left_torque;
@@ -107,6 +107,30 @@ Tfr_100 = interp1(t_tv_unique, Tfr_unique, t_uniform, 'linear');
 Trl_100 = interp1(t_tv_unique, Trl_unique, t_uniform, 'linear');
 Trr_100 = interp1(t_tv_unique, Trr_unique, t_uniform, 'linear');
 
+% TRIM STANDSTILL (START/END) USING VX
+% Keeps the central segment where the vehicle is moving.
+% Tune these two if needed for your data/noise level.
+vx_trim_threshold = 0.20;   % [m/s]
+trim_confirm_time = 0.50;   % [s] required moving time
+
+[keepStart, keepEnd] = vx_moving_window(vx_100, Ts, vx_trim_threshold, trim_confirm_time);
+
+t_uniform = t_uniform(keepStart:keepEnd);
+t_uniform = t_uniform - t_uniform(1);
+
+x_100  = x_100(keepStart:keepEnd);
+y_100  = y_100(keepStart:keepEnd);
+vx_100 = vx_100(keepStart:keepEnd);
+vy_100 = vy_100(keepStart:keepEnd);
+r_100  = r_100(keepStart:keepEnd);
+
+steering_100 = steering_100(keepStart:keepEnd);
+
+mz_100  = mz_100(keepStart:keepEnd);
+Tfl_100 = Tfl_100(keepStart:keepEnd);
+Tfr_100 = Tfr_100(keepStart:keepEnd);
+Trl_100 = Trl_100(keepStart:keepEnd);
+Trr_100 = Trr_100(keepStart:keepEnd);
 
 % CREATE TIMESERIES
 data.time = t_uniform;
@@ -124,4 +148,47 @@ data.Tfl = Tfl_100;
 data.Tfr = Tfr_100;
 data.Trl = Trl_100;
 data.Trr = Trr_100;
+end
+
+function [keepStart, keepEnd] = vx_moving_window(vx, Ts, vxThreshold, confirmTime)
+%VX_MOVING_WINDOW Return indices for the main moving segment.
+% Uses a short moving average + a required consecutive duration to avoid
+% trimming based on noise spikes.
+
+n = numel(vx);
+if n == 0
+    keepStart = 1;
+    keepEnd = 0;
+    return;
+end
+
+confirmSamples = max(1, ceil(confirmTime / Ts));
+
+% Smooth abs(vx) over the same confirmation horizon
+speed = abs(vx);
+speedSmooth = movmean(speed, confirmSamples, 'Endpoints', 'shrink');
+
+isMoving = speedSmooth > vxThreshold;
+
+% Require a full run of confirmSamples consecutive moving samples.
+% Use 'valid' windows to avoid edge effects.
+if confirmSamples >= n
+    keepStart = 1;
+    keepEnd = n;
+    return;
+end
+
+runOk = conv(double(isMoving), ones(confirmSamples, 1), 'valid') >= confirmSamples;
+firstIdx = find(runOk, 1, 'first');
+lastIdx  = find(runOk, 1, 'last');
+
+if isempty(firstIdx) || isempty(lastIdx) || firstIdx >= lastIdx
+    keepStart = 1;
+    keepEnd = n;
+    return;
+end
+
+% 'valid' output indices correspond to window start indices
+keepStart = firstIdx;
+keepEnd = lastIdx + confirmSamples - 1;
 end
