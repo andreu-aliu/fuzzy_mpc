@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_BUILD_TYPE "Release") # TODO: Release
 
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g3")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -mavx2 -mtune=native -funroll-loops -fno-math-errno -fstrict-aliasing -flto -ffast-math")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -mavx2 -mtune=native -funroll-loops -fno-math-errno -fstrict-aliasing -ffast-math")
 
 add_compile_definitions(EIGEN_MAX_ALIGN_BYTES=64)
 

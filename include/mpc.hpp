@@ -356,7 +356,14 @@ class MPC {
             predicted_states[i].delta_dot = x_pred(i * n_states + 5);
 
             predicted_states[i].vx = vx[i+1]; // vx is not predicted by the model
-            predicted_states[i].x = x_ref[i].x;
+
+            if(i == 0){
+                predicted_states[i].x = x_0.x;
+            }else{
+                predicted_states[i].x = predicted_states[i-1].x
+                                        + (predicted_states[i].vx * cos(predicted_states[i].psi)
+                                        + predicted_states[i].vy * sin(predicted_states[i].psi)) * cfg.mpc.Ts;
+            }
         }
 
         return predicted_states;
@@ -568,7 +575,7 @@ class MPC {
         std::cout << "Initializing MPC..." << std::endl;
 
         // Model
-        model = std::make_unique<AnfisModel>(); // LtvModel
+        model = std::make_unique<LtvModel>(); // LtvModel AnfisModel
         model->initialize();
 
         // Save recurrent parameters
