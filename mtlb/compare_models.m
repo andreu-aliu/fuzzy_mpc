@@ -4,8 +4,8 @@ clear all;
 dataFile = "/home/andreu/SIMULATIONS/results_3/run_2/rosbag/rosbag_0.mcap";
 
 % Simulation window
-idx_start = 600;
-horizon  = 200;
+idx_start = 1300;
+horizon  = 20;
 
 %% LOAD DATA
 data = read_ros2bag(dataFile, 0.02);
@@ -25,11 +25,13 @@ meas.y = data.y(idx_start:idx_end);
 meas.vx = data.vx(idx_start:idx_end);
 meas.vy = data.vy(idx_start:idx_end);
 meas.r = data.r(idx_start:idx_end);
+meas.delta = data.delta(idx_start:idx_end);
 
 init_state.y = 0;
 init_state.vy = meas.vy(1);
 init_state.psi = 0;
 init_state.r = meas.r(1);
+init_state.delta = meas.delta(1);
 
 %% CHECK DATA LOADED
 figure('Name','Data check','Position',[100 100 1200 600]);
@@ -75,12 +77,14 @@ grid on
 
 % Steering
 ax4 = nexttile(rightLayout); hold on;
-plot(data.time, data.st, 'w');
-plot(meas.t, in.st, 'b','LineWidth',1.2);
+plot(data.time, data.delta, 'w');
+plot(meas.t, meas.delta, 'b','LineWidth',1.2);
+plot(meas.t, in.st, 'r--', 'LineWidth',1.2)
 ylabel('\delta [rad]');
 title('Steering');
 xlabel('Time [s]');
 grid on
+legend('Delta', 'Delta', 'Delta cmd')
 
 % TV moment
 ax5 = nexttile(rightLayout); hold on;

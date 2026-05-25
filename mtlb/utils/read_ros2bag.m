@@ -45,6 +45,21 @@ for i = 1:Nst
     steering(i) = msg.steering;
 end
 
+% STEERING CMD
+steerCmdSel  = select(bag,"Topic","/as/c/steering");
+steerCmdMsgs = readMessages(steerCmdSel);
+t_steerCmd = steerCmdSel.MessageList.Time;
+
+NstCmd = numel(steerCmdMsgs);
+
+steeringCmd = zeros(NstCmd,1);
+
+for i = 1:NstCmd
+    msg = steerCmdMsgs{i};
+
+    steeringCmd(i) = msg.steering;
+end
+
 % TORQUE VECTORING
 tvSel  = select(bag,"Topic","/ctrl/llc/torque_vectoring");
 tvMsgs = readMessages(tvSel);
@@ -71,12 +86,16 @@ end
 % REMOVE DUPLICATES
 t0 = t_state(1);
 
-t_state = t_state - t0;
-t_steer = t_steer - t0;
-t_tv    = t_tv - t0;
+t_state    = t_state - t0;
+t_steer    = t_steer - t0;
+t_steerCmd = t_steerCmd - t0;
+t_tv       = t_tv - t0;
 
 [t_steer_unique, idx_steer] = unique(t_steer, 'stable');
 steering_unique = steering(idx_steer);
+
+[t_steerCmd_unique, idx_steerCmd] = unique(t_steerCmd, 'stable');
+steerCmd_unique = steeringCmd(idx_steerCmd);
 
 [t_tv_unique, idx_tv] = unique(t_tv, 'stable');
 
@@ -87,8 +106,8 @@ Trl_unique = Trl(idx_tv);
 Trr_unique = Trr(idx_tv);
 
 % RESAMPLING
-t_start = max([t_state(1), t_steer_unique(1), t_tv_unique(1)]);
-t_end   = min([t_state(end), t_steer_unique(end), t_tv_unique(end)]);
+t_start = max([t_state(1), t_steer_unique(1), t_steerCmd_unique(1), t_tv_unique(1)]);
+t_end   = min([t_state(end), t_steer_unique(end), t_steerCmd_unique(end), t_tv_unique(end)]);
 
 t_uniform = (t_start:Ts:t_end)';
 
@@ -99,6 +118,9 @@ vy_100 = interp1(t_state, vy, t_uniform, 'linear');
 r_100  = interp1(t_state, r,  t_uniform, 'linear');
 
 steering_100 = interp1(t_steer_unique, steering_unique, ...
+                       t_uniform, 'linear');
+
+steeringCmd_100 = interp1(t_steerCmd_unique, steerCmd_unique, ...
                        t_uniform, 'linear');
 
 mz_100  = interp1(t_tv_unique, mz_unique,  t_uniform, 'linear');
@@ -126,6 +148,8 @@ r_100  = r_100(keepStart:keepEnd);
 
 steering_100 = steering_100(keepStart:keepEnd);
 
+steeringCmd_100 = steeringCmd_100(keepStart:keepEnd);
+
 mz_100  = mz_100(keepStart:keepEnd);
 Tfl_100 = Tfl_100(keepStart:keepEnd);
 Tfr_100 = Tfr_100(keepStart:keepEnd);
@@ -141,7 +165,9 @@ data.vx = vx_100;
 data.vy = vy_100;
 data.r  = r_100;
 
-data.st = steering_100;
+data.delta = steering_100;
+
+data.st = steeringCmd_100;
 
 data.mz  = mz_100;
 data.Tfl = Tfl_100;
