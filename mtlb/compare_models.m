@@ -1,11 +1,11 @@
 cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'))
 clear all;
 %% Setup
-dataFile = "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG";
+dataFile = "/home/andreu/SIMULATIONS/results_3/run_2/rosbag/rosbag_0.mcap";
 
 % Simulation window
 idx_start = 600;
-horizon  = 1000;
+horizon  = 200;
 
 %% LOAD DATA
 data = read_ros2bag(dataFile, 0.02);
@@ -80,24 +80,25 @@ plot(meas.t, in.st, 'b','LineWidth',1.2);
 ylabel('\delta [rad]');
 title('Steering');
 xlabel('Time [s]');
+grid on
 
 % TV moment
 ax5 = nexttile(rightLayout); hold on;
 plot(data.time, data.mz, 'w');
 plot(meas.t, in.mz, 'b','LineWidth',1.2);
-ylabel('\delta [rad]');
-title('Steering');
+ylabel('Mz [Nm]');
+title('TV Mz');
 xlabel('Time [s]');
 
 % Link time axes
-linkaxes([ax1 ax2 ax3 ax4],'x');
+linkaxes([ax1 ax2 ax3 ax4 ax5],'x');
 grid on
 
 %% COMPUTE MODELS ON WINDOW
 
 % List of models to compare
 models = {
-    @direct_anfis, 'ANFIS direct';
+    @anfis_delta, 'ANFIS delta';
     @ltv, 'LTV MPC';
     @ltv_tv, 'LTV MPC with TV';
 };
@@ -218,7 +219,7 @@ function states = simulateModel(modelFcn, inputs, init_state)
     dt = mean(diff(inputs.t));
     N  = length(inputs.t);
     
-    % Convert init_state struct vector
+    % Convert init_state struct vector (+delta +delta_dot)
     x = [init_state.y, init_state.vy, init_state.psi, init_state.r, 0, 0]';
     
     states(N,1) = init_state;
@@ -228,10 +229,12 @@ function states = simulateModel(modelFcn, inputs, init_state)
         u = [inputs.vx(k), inputs.st(k), inputs.mz(k)];
     
         % Log state
-        states(k).y   = x(1);
-        states(k).vy = x(2);
-        states(k).psi  = x(3);
-        states(k).r   = x(4);
+        states(k).y         = x(1);
+        states(k).vy        = x(2);
+        states(k).psi       = x(3);
+        states(k).r         = x(4);
+        states(k).delta     = x(5);
+        states(k).delta_dot = x(6);
     
         x = modelFcn(x, u, dt);           % propagate
     end

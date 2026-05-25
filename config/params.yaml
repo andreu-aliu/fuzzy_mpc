@@ -39,8 +39,8 @@ as/c:
         Df: 1104.0    # 2208.0635*0.5
         Dr: 1281.5    # 2563.599*0.5
 
-        steering_damp: 0.5      # Damping factor for the slip angle dynamics
-        steering_omega: 16.0    # Natural frequency for the slip angle dynamics
+        steering_damp: 0.5      # Damping factor for the steering dynamics
+        steering_omega: 16.0    # Natural frequency for the steering dynamics
 
 
       Topics:

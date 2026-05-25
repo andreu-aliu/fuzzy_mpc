@@ -1,18 +1,18 @@
-function x_next = direct_anfis(X, U, dt)
+function x_next = anfis_delta(X, U, dt)
 % X: [y vy psi r]
-% U: [vx delta Mtv]
+% U: [vx st Mtv]
     
 % Unpack state and inputs
 C = num2cell(X);
-[y vy psi r] = deal(C{:});
+[y vy psi r delta delta_dot] = deal(C{:});
 C = num2cell(U);
 [vx st mz] = deal(C{:});
 
 % Load models
-persistent direct_anfis;
-if(isempty(direct_anfis))
-    S = load('direct_anfis.mat', 'direct_anfis');
-    direct_anfis = S.direct_anfis;
+persistent anfis_delta;
+if(isempty(anfis_delta))
+    S = load('anfis_delta.mat', 'anfis_delta');
+    anfis_delta = S.anfis_delta;
 end
 
 % % Build ANFIS input vector and normalize
@@ -20,7 +20,7 @@ end
 % Xin_n = (Xin - direct_anfis.norm.mu) ./ direct_anfis.norm.sigma;
 % 
 % % Evaluate learned dynamics
-% [~, ~,dvy] = evalfis_mat(direct_anfis.vy.mat, Xin_n);
+% [~, ~,dvy] = evalfis_mat(direct_anfis.vy.mat, Xin_n);,
 % [~, ~,dr]  = evalfis_mat(direct_anfis.r.mat,  Xin_n);
 % 
 % % Convert to derivatives
@@ -36,7 +36,7 @@ end
 % x_next = X + Xdot*dt;
 
 U_pred = [st; mz];
-[A, B, C] = direct_anfis_matrix(X, U_pred, vx);
+[A, B, C] = anfis_delta_matrix(X, U_pred, vx);
 
 x_next =  A * X + B * U_pred + C; 
 
