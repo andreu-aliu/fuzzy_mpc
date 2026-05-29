@@ -19,6 +19,7 @@ data_paths = {"/home/andreu/SIMULATIONS/results_3/run_2/rosbag",  [], [];
 % Models to compare
 models = {
     @anfis_delta, 'ANFIS delta';
+    @anfis_dot, 'ANFIS dot';
     @ltv, 'LTV MPC';
     @ltv_tv, 'LTV MPC with TV';
 };
@@ -569,6 +570,7 @@ function plotErrorSummary(ax, modelNames, rmse, mae, p95abs, ylab, ttl)
 axes(ax); %#ok<LAXES>
 hold on; grid on;
 
+modelNames = string(modelNames);
 x = categorical(modelNames);
 bar(x, rmse, 'FaceAlpha', 0.9);
 plot(x, mae, 'o', 'Color', 'w', 'MarkerFaceColor','w', 'MarkerEdgeColor','w', ...
