@@ -18,8 +18,19 @@ function [A, b, y] = evalfis_mat(fis, input)
         f(i) = fis.A{i} * input' + fis.b{i};
     end
     
-    % Normalized weights
-    w_n = w / sum(w);
+    % Normalized weights (robust)
+    w_sum = sum(w);
+    if w_sum <= 1e-12 || ~isfinite(w_sum)
+        [w_max, i_max] = max(w);
+        if isfinite(w_max) && w_max > 0
+            w_n = zeros(fis.n_r,1);
+            w_n(i_max) = 1;
+        else
+            w_n = ones(fis.n_r,1) / fis.n_r;
+        end
+    else
+        w_n = w / w_sum;
+    end
 
     % Total sum
     y = w_n' * f;

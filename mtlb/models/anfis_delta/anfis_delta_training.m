@@ -25,7 +25,7 @@ seed = 2;
 in.vy = []; out.vy = [];
 in.r  = []; out.r  = [];
 in.vx = [];
-in.st = [];
+in.delta = [];
 in.mz = [];
 
 Ts = 0.02; % Sampling time for the models [s]
@@ -46,7 +46,7 @@ for i = 1:size(data_paths,1)
     % Filter data
     data.r  = sgolayfilt_custom(data.r, 3, 21);
     data.vy = sgolayfilt_custom(data.vy, 3, 21);
-    data.st = sgolayfilt_custom(data.st, 3, 21);
+    data.delta = sgolayfilt_custom(data.delta, 3, 21);
     data.mz = sgolayfilt_custom(data.mz, 3, 21);
     data.vx = sgolayfilt_custom(data.vx, 3, 21);
 
@@ -58,7 +58,7 @@ for i = 1:size(data_paths,1)
     in.vy = [in.vy; data.vy(idx)];
     in.r  = [in.r ; data.r(idx)];
     in.vx = [in.vx; data.vx(idx)];
-    in.st = [in.st; data.st(idx)];
+    in.delta = [in.delta; data.delta(idx)];
     in.mz = [in.mz; data.mz(idx)];
     
     % Predicted is delta vy,r
@@ -69,7 +69,7 @@ for i = 1:size(data_paths,1)
 end
 
 % Normalization
-X = [in.vy in.r in.vx in.st in.mz];
+X = [in.vy in.r in.vx in.delta in.mz];
 Y = [out.vy out.r];
 [Xn, mu, sigma] = zscore(X);
 anfis_delta.norm.mu = mu;

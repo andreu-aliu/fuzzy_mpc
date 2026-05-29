@@ -38,7 +38,7 @@ if any(mask_low) || any(mask_high)
 
     fprintf('\n===== ANFIS EXTRAPOLATION DETECTED =====\n');
 
-    labels = {'vy','r','vx','st','mz'};
+    labels = {'vy','r','vx','delta','mz'};
 
     for j = 1:length(X_in)
         if mask_low(j) || mask_high(j)
@@ -109,5 +109,4 @@ A(5:6,5:6) = As; % Effect of [delta,delta_dot] on [delta,delta_dot]
 B(5:6,1) = Bs;   % Effect of st on [delta,delta_dot]
 
 end
-
 
