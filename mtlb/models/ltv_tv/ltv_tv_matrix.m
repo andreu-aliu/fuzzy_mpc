@@ -52,24 +52,14 @@ Ac(4,4) = -(lf^2*Cf*cos(delta) + lr^2*Cr) / (Iz * vx_eff);
 Bc(4,1) =  lf*Cf*cos(delta) / Iz;
 Bc(4,2) =  1 / Iz;
 
-% Steering dynamics
+% Steering dynamics (fordward-Euler discretization)
 Ac(5,6) = 1;
 Ac(6,5) = -(wn * wn);
 Ac(6,6) = -2*(wn*zeta);
 Bc(6,1) = wn*wn;
 
-% Exact discretization of affine system
-% [x_{k+1}]   [Ad Bd Cd] [x_k]
-% [   1    ] = [ 0  1  0] [u_k]
-%                         [ 1 ]
-M = [Ac, Bc, Cc;
-     zeros(2,6), zeros(2,2), zeros(2,1);
-     zeros(1,6), zeros(1,2), 0];
-
-expM = expm(M * dt);
-
-Ad = expM(1:6, 1:6);
-Bd = expM(1:6, 7:8);
-Cd = expM(1:6, 9);
+Ad = eye(6) + Ac * dt;
+Bd = Bc * dt;
+Cd = Cc * dt;
 
 end

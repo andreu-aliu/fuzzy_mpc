@@ -1,5 +1,5 @@
 function x_next = anfis_delta(X, U, dt)
-% X: [y vy psi r]
+% X: [y vy psi r delta delta_dot]
 % U: [vx st Mtv]
     
 % Unpack state and inputs

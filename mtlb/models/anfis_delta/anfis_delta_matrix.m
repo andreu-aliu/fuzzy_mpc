@@ -89,7 +89,7 @@ A(4,5) = A_r(4); % Effect of delta on r
 B(4,2) = A_r(5); % Effect of mz on r
 C(4)   = b_r + A_r(3) * vx; % Effect of vx on r
 
-% Steering dynamics
+% Steering dynamics (fordward-Euler discretization)
 wn = 16.0;
 zeta = 0.5;
 
@@ -98,15 +98,10 @@ As_c = [0 1;
 Bs_c = [0;
       wn^2];
 
-M = [As_c Bs_c;
-     zeros(1,2) 0];
-Md = expm(M*dt);
-
-As = Md(1:2,1:2);
-Bs = Md(1:2,3);
+As = eye(2) + As_c * dt;
+Bs = Bs_c * dt;
 
 A(5:6,5:6) = As; % Effect of [delta,delta_dot] on [delta,delta_dot]
 B(5:6,1) = Bs;   % Effect of st on [delta,delta_dot]
 
 end
-

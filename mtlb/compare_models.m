@@ -39,7 +39,7 @@ sim_cfg.idx_start = 400;
 sim_cfg.horizon = 500;
 
 
-%% Load datasets
+%% Load datasets (only once)
 load_ros2bag_datasets(data_paths, Ts, cache_name);
 
 %% Prepare datasets
