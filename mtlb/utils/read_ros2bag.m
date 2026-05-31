@@ -19,6 +19,8 @@ y  = zeros(Ns,1);
 vx = zeros(Ns,1);
 vy = zeros(Ns,1);
 r  = zeros(Ns,1);
+ax = zeros(Ns,1);
+ay = zeros(Ns,1);
 
 for i = 1:Ns
     msg = stateMsgs{i};
@@ -28,6 +30,8 @@ for i = 1:Ns
     vx(i) = msg.odom.velocity.x;
     vy(i) = msg.odom.velocity.y;
     r(i)  = msg.odom.velocity.w;
+    ax(i) = msg.odom.acceleration.x;
+    ay(i) = msg.odom.acceleration.y;
 end
 
 % STEERING
@@ -116,6 +120,8 @@ y_100  = interp1(t_state, y,  t_uniform, 'linear');
 vx_100 = interp1(t_state, vx, t_uniform, 'linear');
 vy_100 = interp1(t_state, vy, t_uniform, 'linear');
 r_100  = interp1(t_state, r,  t_uniform, 'linear');
+ax_100 = interp1(t_state, ax, t_uniform, 'linear');
+ay_100 = interp1(t_state, ay, t_uniform, 'linear');
 
 steering_100 = interp1(t_steer_unique, steering_unique, ...
                        t_uniform, 'linear');
@@ -145,6 +151,8 @@ y_100  = y_100(keepStart:keepEnd);
 vx_100 = vx_100(keepStart:keepEnd);
 vy_100 = vy_100(keepStart:keepEnd);
 r_100  = r_100(keepStart:keepEnd);
+ax_100 = ax_100(keepStart:keepEnd);
+ay_100 = ay_100(keepStart:keepEnd);
 
 steering_100 = steering_100(keepStart:keepEnd);
 
@@ -164,6 +172,8 @@ data.y  = y_100;
 data.vx = vx_100;
 data.vy = vy_100;
 data.r  = r_100;
+data.ax = ax_100;
+data.ay = ay_100;
 
 data.delta = steering_100;
 

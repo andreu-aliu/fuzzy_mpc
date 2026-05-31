@@ -12,12 +12,12 @@ t = data.time;
 
 figure('Color','k','Position',[100 100 1400 800])
 
-tl = tiledlayout(5,2,'TileSpacing','compact','Padding','compact');
+tl = tiledlayout(6,2,'TileSpacing','compact','Padding','compact');
 
 % ======================
 % Left column — Map
 % ======================
-nexttile(tl,[5 1])
+nexttile(tl,[6 1])
 plot(data.x, data.y, 'w', 'LineWidth', 1.2)
 axis equal
 grid on
@@ -28,7 +28,7 @@ title('Vehicle Map')
 % ======================
 % Right column — Signals
 % ======================
-ax = gobjects(5,1);
+ax = gobjects(6,1);
 
 ax(1) = nexttile(tl);
 plot(t, data.st, 'LineWidth', 1)
@@ -65,7 +65,88 @@ title('Wheel Torques')
 legend('FL','FR','RL','RR')
 grid on
 
+ax(6) = nexttile(tl);
+plot(t, data.r, 'LineWidth', 1)
+ylabel('r [rad/s]')
+xlabel('Time [s]')
+title('Yaw rate')
+grid on
+
 linkaxes(ax,'x')
+
+%% Check yaw rate (r) vs heading derivative
+Ts = mean(diff(t));
+
+if isfield(data,'heading')
+    psi = unwrap(data.heading(:));
+else
+    dx = gradient(data.x(:));
+    dy = gradient(data.y(:));
+    psi = unwrap(atan2(dy, dx));
+end
+
+psi_dot = gradient(psi, Ts);
+
+figure('Color','k','Position',[140 140 1400 700])
+tl = tiledlayout(2,1,'TileSpacing','compact','Padding','compact');
+
+ax = nexttile(tl); hold on; grid on;
+plot(t, data.r, 'LineWidth', 1.2);
+plot(t, psi_dot, 'LineWidth', 1.2);
+ylabel('[rad/s]')
+title('Yaw rate check')
+legend('r', 'd(heading)/dt', 'Location','best')
+
+ax2 = nexttile(tl); hold on; grid on;
+scatter(psi_dot, data.r(:), 6, 'filled', 'MarkerFaceAlpha', 0.15);
+xlabel('d(heading)/dt [rad/s]')
+ylabel('r [rad/s]')
+title('r vs d(heading)/dt')
+
+%% Check accelerations (ax, ay)
+if isfield(data,'ax') && isfield(data,'ay')
+    Ts = mean(diff(t));
+
+    vx = data.vx(:);
+    vy = data.vy(:);
+    r  = data.r(:);
+    ax_meas = data.ax(:);
+    ay_meas = data.ay(:);
+
+    vx_dot_fd = gradient(vx, Ts);
+    vy_dot_fd = gradient(vy, Ts);
+
+    % Body-frame kinematics:
+    % ax ~= vx_dot - vy*r  -> vx_dot ~= ax + vy*r
+    % ay ~= vy_dot + vx*r  -> vy_dot ~= ay - vx*r
+    vx_dot_from_ax = ax_meas + vy.*r;
+    vy_dot_from_ay = ay_meas - vx.*r;
+
+    figure('Color','k','Position',[120 120 1400 800])
+    tl = tiledlayout(2,1,'TileSpacing','compact','Padding','compact');
+    ax = gobjects(2,1);
+
+    ax(1) = nexttile(tl); hold on; grid on;
+    plot(t, ax_meas, 'LineWidth', 1.1);
+    plot(t, vx_dot_fd, 'LineWidth', 1.1);
+    plot(t, vx_dot_from_ax, 'LineWidth', 1.1);
+    ylabel('[m/s^2]');
+    title('v_x derivative check');
+    legend('a_x', 'd(v_x)/dt', 'a_x + v_y r', 'Location','best');
+
+    ax(2) = nexttile(tl); hold on; grid on;
+    plot(t, ay_meas, 'LineWidth', 1.1);
+    plot(t, vy_dot_fd, 'LineWidth', 1.1);
+    plot(t, vy_dot_from_ay, 'LineWidth', 1.1);
+    ylabel('[m/s^2]');
+    title('v_y derivative check');
+    xlabel('Time [s]');
+    legend('a_y', 'd(v_y)/dt', 'a_y - v_x r', 'Location','best');
+
+    linkaxes(ax,'x')
+else
+    warning('No data.ax/data.ay fields found. Update read_ros2bag output and re-load.');
+end
 
 
 %% Plot Delta_r Delta_vy and filtered
@@ -106,7 +187,7 @@ plot(t, data.vy, 'LineWidth', 1)
 hold on
 plot(t, vy_filtered, 'LineWidth', 1)
 ylabel('\delta [rad]')
-title('Yaw rate')
+title('Vy')
 grid on
 
 ax(4) = nexttile(tl);
@@ -114,7 +195,7 @@ plot(t(1:end-1), delta_vy, 'LineWidth', 1)
 hold on; 
 plot(t(1:end-1), delta_vy_filtered, 'LineWidth', 1)
 ylabel('v_x [m/s]')
-title('\Delta Yaw rate')
+title('\Delta Vy')
 grid on
 
 linkaxes(ax,'x')

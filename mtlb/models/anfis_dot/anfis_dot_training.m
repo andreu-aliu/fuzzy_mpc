@@ -49,6 +49,7 @@ for i = 1:size(data_paths,1)
     data.delta = sgolayfilt_custom(data.delta, 3, 21);
     data.mz = sgolayfilt_custom(data.mz, 3, 21);
     data.vx = sgolayfilt_custom(data.vx, 3, 21);
+    data.ay = sgolayfilt_custom(data.ay, 3, 21);
 
     % Resample (keep only some data)
     idx = ini:keep_factor:fin-1;
@@ -62,7 +63,7 @@ for i = 1:size(data_paths,1)
     in.mz = [in.mz; data.mz(idx)];
     
     % Predicted is vy_dot, r_dot
-    out.vy = [out.vy; (data.vy(idx_next)-data.vy(idx))./Ts];
+    out.vy = [out.vy; data.ay(idx) - data.vx(idx).*data.r(idx)];
     out.r  = [out.r ; (data.r(idx_next)-data.r(idx))./Ts];
 
     fprintf('Rosbag %d read: %d points.\n', i, nPoints);
