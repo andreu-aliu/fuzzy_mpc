@@ -2,6 +2,7 @@ cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/
 clear all;
 %% Setup
 Ts = 0.02;
+cache_name = "datasets_training";
 
 % Load evaluation files
 data_paths = {"/home/andreu/SIMULATIONS/results_3/run_2/rosbag",  [], [];
@@ -39,11 +40,16 @@ sim_cfg.horizon = 500;
 
 
 %% Load datasets
+load_ros2bag_datasets(data_paths, Ts, cache_name);
+
+%% Prepare datasets
+load(cache_name + ".mat", 'datasets', 'meta');
+
 runs = cell(size(data_paths,1),1);
 
 for i = 1:size(data_paths,1)
     bagPath = data_paths{i,1};
-    data = read_ros2bag(bagPath, Ts);
+    data = datasets(i).data;
 
     ini = data_paths{i,2};
     if isempty(ini)
@@ -75,7 +81,7 @@ for i = 1:size(data_paths,1)
     run.delta_dot = gradient(run.delta, Ts);
 
     runs{i} = run;
-    fprintf('Rosbag %d loaded: %s (%d points)\n', i, bagPath, numel(run.vx));
+    fprintf('Rosbag %d prepared: %s (%d points)\n', i, bagPath, numel(run.vx));
 end
 
 

@@ -20,18 +20,24 @@ data_paths = {"/home/andreu/SIMULATIONS/results_3/run_2/rosbag", [], [];
 keep_factor = 5; % Keep one of every - samples
 validation_fraction = 0.2; % Define the fraction of data for validation
 seed = 2;
+cache_name = "datasets_training";
+
+Ts = 0.02; % Sampling time for the models [s]
 
 %% Load data
+load_ros2bag_datasets(data_paths, Ts, cache_name);
+
+%% Prepare data
+load(cache_name + ".mat", 'datasets', 'meta');
+
 in.vy = []; out.vy = [];
 in.r  = []; out.r  = [];
 in.vx = [];
 in.delta = [];
 in.mz = [];
 
-Ts = 0.02; % Sampling time for the models [s]
-
 for i = 1:size(data_paths,1)
-    data = read_ros2bag(data_paths{i,1}, Ts);
+    data = datasets(i).data;
 
     ini = data_paths{i,2};
     if isempty(ini)
