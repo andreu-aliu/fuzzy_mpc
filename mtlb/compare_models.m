@@ -19,8 +19,9 @@ data_paths = {"/home/andreu/SIMULATIONS/results_3/run_2/rosbag",  [], [];
 
 % Models to compare
 models = {
-    % @anfis_delta, 'ANFIS delta';
-    % @anfis_dot, 'ANFIS dot';
+    @anfis_direct, 'ANFIS direct'
+    @anfis_delta, 'ANFIS delta';
+    @anfis_dot, 'ANFIS dot';
     @anfis_residuals, 'ANFIS residuals';
     % @anfis_residuals_2, 'ANFIS residuals matrix';
     @ltv, 'LTV MPC';
@@ -38,7 +39,7 @@ eval_cfg.r_edges  = [-2:0.15:2 Inf];        % bins for residual analysis
 % Simulate on one run (state propagation)
 sim_cfg.run_idx = 1;
 sim_cfg.idx_start = 400;
-sim_cfg.horizon = 2000;
+sim_cfg.horizon = 60;
 
 
 %% Load datasets (only once)
