@@ -32,56 +32,63 @@ Ts = 0.02; % Common sampling time [s]
 data_paths_training = {
     % 5/7/26
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-05/05-07-2026__run_3", [], [], "autox", [], 1;
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-05/05-07-2026__run_4", [], [], "autox", [], 1;
     % 8/7/26
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-08/2026-07-08__run_2", [], [], "autox", [], 2;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-08/2026-07-08__run_5", [], [], "autox", [], 2;
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-08/2026-07-08__run_9", [], [], "autox", [], 2;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-08/2026-07-08__run_10", [], [], "autox", [], 2;
     % 12/7/26
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_8", [], [], "autox", [], 3;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_10", [], [], "autox", [], 3;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_11", [], [], "trackdrive", [], 3;
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_16", [], [], "autox", [], 3;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_23", [], [], "autox", [], 3;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_24", [], [], "autox", [], 3;
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_31", [], [], "autox", [], 3;
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_42", [], [], "autox", [], 3;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_47", [], [], "trackdrive", 9, 3;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_50", [], [], "acceleration", [], [];
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_53", [], [], "acceleration", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_57", [], [], "acceleration", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_58", [], [], "skidpad", [], [];
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_61", [], [], "skidpad", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_65", [], [], "skidpad", [], [];
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_67", [], [], "skidpad", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_69", [], [], "skidpad", [], [];
     % 30/7/26
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_7", [], [], "acceleration", [], [];
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_12", [], [], "acceleration", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_15", [], [], "acceleration", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_20", [], [], "acceleration", [], [];
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_23", [], [], "acceleration", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_29", [], [], "acceleration", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_31", [], [], "acceleration", [], [];
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_38", [], [], "acceleration", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_39", [], [], "acceleration", [], [];
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_41", [], [], "trackdrive", [], 4;
 
 
 };
 
 data_paths_eval = {
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-05/05-07-2026__run_3", [], [], "autox", [], 1;
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_41", [], [], "trackdrive", [], 4;
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_61", [], [], "skidpad", [], [];
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_67", [], [], "skidpad", [], [];
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_53", [], [], "acceleration", [], [];
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_12", [], [], "acceleration", [], [];
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_23", [], [], "acceleration", [], [];
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_38", [], [], "acceleration", [], [];
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_16", [], [], "autox", [], 3;
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_42", [], [], "autox", [], 3;
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-05/05-07-2026__run_4", [], [], "autox", [], 1;
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-08/2026-07-08__run_9", [], [], "autox", [], 2;
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_31", [], [], "autox", [], 3;
+    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_8", [], [], "autox", [], 3;
 };
 
 %% Validate rosbag paths
 
 validate_rosbag_paths(data_paths_training, data_paths_eval);
 
-%% Dataset summary
+%% Dataset summaries
 
-dataset_summary = summarize_dataset_paths(data_paths_training, data_paths_eval);
-disp(dataset_summary);
+[event_summary, track_summary] = summarize_dataset_paths( ...
+    data_paths_training, data_paths_eval);
+
+fprintf('\nRuns per event:\n');
+disp(event_summary);
+
+fprintf('Laps per track layout:\n');
+disp(track_summary);
 
 %% Generate MAT files
 

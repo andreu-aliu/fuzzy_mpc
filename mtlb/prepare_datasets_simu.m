@@ -46,10 +46,16 @@ data_paths_eval = {
 
 validate_rosbag_paths(data_paths_training, data_paths_eval);
 
-%% Dataset summary
+%% Dataset summaries
 
-dataset_summary = summarize_dataset_paths(data_paths_training, data_paths_eval);
-disp(dataset_summary);
+[event_summary, track_summary] = summarize_dataset_paths( ...
+    data_paths_training, data_paths_eval);
+
+fprintf('\nRuns per event:\n');
+disp(event_summary);
+
+fprintf('Laps per track layout:\n');
+disp(track_summary);
 
 %% Generate MAT files
 
