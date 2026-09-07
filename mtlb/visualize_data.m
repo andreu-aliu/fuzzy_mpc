@@ -2,7 +2,7 @@ cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/
 clear all
 %% Setup
 
-data_path = "/home/andreu/SIMULATIONS/results_3/run_2/rosbag";
+data_path = "/media/andreu/200GB Toshiba/TFM Data/2026-07-05/05-07-2026__run_3";
 
 %% Load data 
 data = read_ros2bag(data_path, 0.02);

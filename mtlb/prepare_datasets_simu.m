@@ -6,7 +6,7 @@
 clear;
 clc;
 
-mtlb_dir = fileparts(mfilename('fullpath'));
+mtlb_dir = '/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb';
 cd(mtlb_dir);
 addpath(genpath(mtlb_dir));
 
@@ -41,6 +41,10 @@ data_paths_eval = {
     "/home/andreu/SIMULATIONS/results_3/run_12/rosbag", [], [], "autox", [], 1;
     "/home/andreu/SIMULATIONS/results_3/run_13/rosbag", [], [], "autox", [], 1;
 };
+
+%% Validate rosbag paths
+
+validate_rosbag_paths(data_paths_training, data_paths_eval);
 
 %% Dataset summary
 
