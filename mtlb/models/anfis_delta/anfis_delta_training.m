@@ -4,31 +4,15 @@
 cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'))
 clear all
 
-% List of data path (csv), start, end
-data_paths = {"/home/andreu/SIMULATIONS/results_3/run_2/rosbag", [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_3/rosbag", [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_4/rosbag", [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_5/rosbag", [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_6/rosbag", [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_9/rosbag", [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_10/rosbag", [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_11/rosbag", [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_12/rosbag", [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_13/rosbag", [], [];
-              };
-
 keep_factor = 5; % Keep one of every - samples
 validation_fraction = 0.2; % Define the fraction of data for validation
 seed = 2;
-cache_name = "datasets_training";
+dataset_file = fullfile("data", "datasets_training_simu.mat");
 
 Ts = 0.02; % Sampling time for the models [s]
 
-%% Load data
-load_ros2bag_datasets(data_paths, Ts, cache_name);
-
-%% Prepare data
-load(cache_name + ".mat", 'datasets', 'meta');
+%% Load prepared training data
+load(dataset_file, 'datasets', 'meta');
 
 in.vy = []; out.vy = [];
 in.r  = []; out.r  = [];
@@ -36,14 +20,14 @@ in.vx = [];
 in.delta = [];
 in.mz = [];
 
-for i = 1:size(data_paths,1)
+for i = 1:numel(datasets)
     data = datasets(i).data;
 
-    ini = data_paths{i,2};
+    ini = datasets(i).ini;
     if isempty(ini)
         ini = 1;
     end
-    fin = data_paths{i,3};
+    fin = datasets(i).fin;
     if isempty(fin)
         fin = size(data.vx,1);
     end

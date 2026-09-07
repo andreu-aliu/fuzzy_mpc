@@ -1,0 +1,74 @@
+function dataset_summary = summarize_dataset_paths(data_paths_training, data_paths_eval)
+%SUMMARIZE_DATASET_PATHS Count runs by event and track layout.
+% The sixth column (track_id) may be empty for acceleration and skidpad,
+% because those events define their own layout. Autox and trackdrive require
+% a positive integer track ID.
+
+validate_path_table(data_paths_training, 'training');
+validate_path_table(data_paths_eval, 'evaluation');
+
+n_training = size(data_paths_training, 1);
+all_paths = [data_paths_training; data_paths_eval];
+n_runs = size(all_paths, 1);
+
+events = lower(string(all_paths(:, 4)));
+track_layouts = strings(n_runs, 1);
+
+valid_events = ["autox", "skidpad", "trackdrive", "acceleration"];
+
+for i = 1:n_runs
+    event = events(i);
+    if ~ismember(event, valid_events)
+        error('Invalid event "%s" at combined row %d.', event, i);
+    end
+
+    track_id = all_paths{i, 6};
+    if event == "acceleration" || event == "skidpad"
+        if ~isempty(track_id)
+            validate_track_id(track_id, i);
+        end
+        track_layouts(i) = event;
+    else
+        if isempty(track_id)
+            error('Event "%s" requires a track_id at combined row %d.', ...
+                  event, i);
+        end
+        validate_track_id(track_id, i);
+        track_layouts(i) = "track_" + string(track_id);
+    end
+end
+
+keys = events + "|" + track_layouts;
+[~, first_idx, group_idx] = unique(keys);
+n_groups = numel(first_idx);
+
+is_training = false(n_runs, 1);
+is_training(1:n_training) = true;
+
+training_runs = accumarray(group_idx, double(is_training), [n_groups, 1]);
+evaluation_runs = accumarray(group_idx, double(~is_training), [n_groups, 1]);
+total_runs = training_runs + evaluation_runs;
+
+dataset_summary = table( ...
+    events(first_idx), ...
+    track_layouts(first_idx), ...
+    training_runs, ...
+    evaluation_runs, ...
+    total_runs, ...
+    'VariableNames', { ...
+        'Event', 'TrackLayout', 'TrainingRuns', 'EvaluationRuns', 'TotalRuns'});
+
+dataset_summary = sortrows(dataset_summary, {'Event', 'TrackLayout'});
+end
+
+function validate_path_table(data_paths, split_name)
+if ~iscell(data_paths) || size(data_paths, 2) ~= 6
+    error('%s paths must be a six-column cell array.', split_name);
+end
+end
+
+function validate_track_id(track_id, row)
+validateattributes(track_id, {'numeric'}, ...
+    {'scalar', 'real', 'finite', 'integer', 'positive'}, ...
+    mfilename, sprintf('track_id at combined row %d', row));
+end

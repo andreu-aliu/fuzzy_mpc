@@ -2,27 +2,14 @@ cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/
 clear all;
 %% Setup
 Ts = 0.02;
-cache_name = "datasets_training";
-
-% Load evaluation files
-data_paths = {"/home/andreu/SIMULATIONS/results_3/run_2/rosbag",  [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_3/rosbag",  [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_4/rosbag",  [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_5/rosbag",  [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_6/rosbag",  [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_9/rosbag",  [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_10/rosbag", [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_11/rosbag", [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_12/rosbag", [], [];
-              "/home/andreu/SIMULATIONS/results_3/run_13/rosbag", [], [];
-              };
+dataset_file = fullfile("data", "datasets_evaluation_simu.mat");
 
 % Models to compare
 models = {
-    @anfis_direct, 'ANFIS direct'
+    % @anfis_direct, 'ANFIS direct'
     @anfis_delta, 'ANFIS delta';
-    @anfis_dot, 'ANFIS dot';
-    @anfis_residuals, 'ANFIS residuals';
+    % @anfis_dot, 'ANFIS dot';
+    % @anfis_residuals, 'ANFIS residuals';
     % @anfis_residuals_2, 'ANFIS residuals matrix';
     @ltv, 'LTV MPC';
     @ltv_tv, 'LTV MPC with TV';
@@ -42,23 +29,30 @@ sim_cfg.idx_start = 400;
 sim_cfg.horizon = 60;
 
 
-%% Load datasets (only once)
-load_ros2bag_datasets(data_paths, Ts, cache_name);
+%% Load prepared evaluation datasets
+if ~isfile(dataset_file)
+    error(['Evaluation dataset not found: %s\n' ...
+           'Run prepare_datasets.m before comparing models.'], dataset_file);
+end
 
-%% Prepare datasets
-load(cache_name + ".mat", 'datasets', 'meta');
+load(dataset_file, 'datasets', 'meta');
 
-runs = cell(size(data_paths,1),1);
+if abs(meta.Ts - Ts) > eps(max(meta.Ts, Ts))
+    error('Dataset sampling time (%g s) does not match model Ts (%g s).', ...
+          meta.Ts, Ts);
+end
 
-for i = 1:size(data_paths,1)
-    bagPath = data_paths{i,1};
+runs = cell(numel(datasets), 1);
+
+for i = 1:numel(datasets)
+    bagPath = datasets(i).path;
     data = datasets(i).data;
 
-    ini = data_paths{i,2};
+    ini = datasets(i).ini;
     if isempty(ini)
         ini = 1;
     end
-    fin = data_paths{i,3};
+    fin = datasets(i).fin;
     if isempty(fin)
         fin = numel(data.vx);
     end
@@ -67,6 +61,10 @@ for i = 1:size(data_paths,1)
     idx = ini:fin;
 
     run.path = bagPath;
+    run.event = datasets(i).event;
+    run.laps = datasets(i).laps;
+    run.track_id = datasets(i).track_id;
+    run.track_layout = datasets(i).track_layout;
     run.t = data.time(idx);
     run.x = data.x(idx);
     run.y = data.y(idx);
@@ -84,7 +82,9 @@ for i = 1:size(data_paths,1)
     run.delta_dot = gradient(run.delta, Ts);
 
     runs{i} = run;
-    fprintf('Rosbag %d prepared: %s (%d points)\n', i, bagPath, numel(run.vx));
+    fprintf(['Rosbag %d prepared: %s | %s | %s | %g lap(s) | ' ...
+             '%d points\n'], ...
+            i, bagPath, run.event, run.track_layout, run.laps, numel(run.vx));
 end
 
 

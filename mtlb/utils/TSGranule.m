@@ -98,7 +98,7 @@ classdef TSGranule < handle
         end
 
         function M = mahalanobis(obj, zeta)
-            %MAHALANOBIS Compute M_k^i for the ellipsoid E_k^i.
+            % MAHALANOBIS Compute M_k^i for the ellipsoid E_k^i.
             %
             % M_k^i = (zeta_k - nu_k^i)' * Sigma_k^i^{-1} * (zeta_k - nu_k^i)
 
@@ -108,7 +108,7 @@ classdef TSGranule < handle
         end
 
         function inside = contains(obj, zeta, epsilon)
-            %CONTAINS Check whether zeta_k belongs to E_k^i.
+            % CONTAINS Check whether zeta_k belongs to E_k^i.
             %
             % E_k^i = { zeta_k in Z_k | M_k^i <= epsilon }
 
@@ -117,7 +117,7 @@ classdef TSGranule < handle
         end
 
         function xi = membership(obj, zeta)
-            %MEMBERSHIP Compute non-normalized membership xi_k^i(zeta_k).
+            % MEMBERSHIP Compute non-normalized membership xi_k^i(zeta_k).
             %
             % This follows the idea of equation (10):
             % xi_k^i(zeta_k) depends on the distance from zeta_k to nu_k^i,
@@ -134,7 +134,7 @@ classdef TSGranule < handle
         end
 
         function updateAntecedent(obj, zeta, g_i) % TODO: Not the same as paper
-            %UPDATEANTECEDENT Update nu, Sigma, S, T, zeta_min and zeta_max.
+            % UPDATEANTECEDENT Update nu, Sigma, S, T, zeta_min and zeta_max.
             %
             % This updates the antecedent part of G_k^i after zeta_k has
             % been admitted into the granule.
@@ -184,7 +184,7 @@ classdef TSGranule < handle
         end
 
         function updateConsequentRLS(obj, zeta_prev, x_next)
-            %UPDATECONSEQUENTRLS Update A_k^i and B_k^i using RLS.
+            % UPDATECONSEQUENTRLS Update A_k^i and B_k^i using RLS.
             %
             % Regression:
             %   x_{k+1} = Theta_k * zeta_k
@@ -220,7 +220,7 @@ classdef TSGranule < handle
         end
 
         function initConsequentWLS(obj, Zeta_prev_window, X_next_window)
-            %INITCONSEQUENTWLS Initialize A_k^i and B_k^i using WLS/LS.
+            % INITCONSEQUENTWLS Initialize A_k^i and B_k^i using WLS/LS.
             %
             % Used when a new granule is created from a window of phi samples.
             %
@@ -244,7 +244,7 @@ classdef TSGranule < handle
         end
 
         function x_next_pred = predictLocal(obj, x, u)
-            %PREDICTLOCAL Predict next state using the local TS consequent.
+            % PREDICTLOCAL Predict next state using the local TS consequent.
             %
             % x_{k+1}^i = A_k^i x_k + B_k^i u_k
 
@@ -257,7 +257,7 @@ classdef TSGranule < handle
 end
 
 function value = getFieldOrDefault(s, field, defaultValue)
-    %GETFIELDORDEFAULT Read struct field or return default value.
+    % GETFIELDORDEFAULT Read struct field or return default value.
 
     if isfield(s, field)
         value = s.(field);
