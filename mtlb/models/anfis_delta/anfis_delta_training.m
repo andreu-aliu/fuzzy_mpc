@@ -7,7 +7,7 @@ clear all
 keep_factor = 5; % Keep one of every - samples
 validation_fraction = 0.2; % Define the fraction of data for validation
 seed = 2;
-dataset_file = fullfile("data", "datasets_training_simu.mat");
+dataset_file = fullfile("data", "datasets_training.mat");
 
 Ts = 0.02; % Sampling time for the models [s]
 

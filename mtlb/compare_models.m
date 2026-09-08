@@ -8,6 +8,8 @@ dataset_file = fullfile("data", "datasets_evaluation_simu.mat");
 models = {
     % @anfis_direct, 'ANFIS direct'
     @anfis_delta, 'ANFIS delta';
+    @nonlinear_bicycle, 'Nonlinear bicycle';
+    @nonlinear_double_track, 'Nonlinear double track';
     % @anfis_dot, 'ANFIS dot';
     % @anfis_residuals, 'ANFIS residuals';
     % @anfis_residuals_2, 'ANFIS residuals matrix';
