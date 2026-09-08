@@ -358,20 +358,17 @@ end
 
 %% Visualization (statistics)
 
-% Errors
-figure('Name','Model errors (one-step)','Position',[100 100 1200 800]);
-tl = tiledlayout(3,1,'TileSpacing','compact','Padding','compact');
+% Lateral-dynamics errors. Steering-angle errors are omitted because every
+% model uses the same steering-actuator dynamics.
+figure('Name','Model errors (one-step)','Position',[100 100 1200 650]);
+tl = tiledlayout(2,1,'TileSpacing','compact','Padding','compact');
 
 ax1 = nexttile(tl,1);
-plotErrorSummary(ax1, stats.models, stats.rmse_delta, stats.mae_delta, stats.p95abs_delta, ...
-    '\delta error [rad]', 'Delta');
-
-ax2 = nexttile(tl,2);
-plotErrorSummary(ax2, stats.models, stats.rmse_r, stats.mae_r, stats.p95abs_r, ...
+plotErrorSummary(ax1, stats.models, stats.rmse_r, stats.mae_r, stats.p95abs_r, ...
     'r error [rad/s]', 'Yaw rate');
 
-ax3 = nexttile(tl,3);
-plotErrorSummary(ax3, stats.models, stats.rmse_vy, stats.mae_vy, stats.p95abs_vy, ...
+ax2 = nexttile(tl,2);
+plotErrorSummary(ax2, stats.models, stats.rmse_vy, stats.mae_vy, stats.p95abs_vy, ...
     'v_y error [m/s]', 'Lateral velocity');
 
 
