@@ -15,14 +15,15 @@ executes, not only the intended model architecture.
 | `ltv` | Physics-based, linear time-varying | Linear single-track bicycle | Baseline and MPC-ready |
 | `nonlinear_bicycle` | Physics-based, nonlinear | Nonlinear single-track with saturated tyre forces | Comparison model |
 | `nonlinear_double_track` | Physics-based, nonlinear | Four independent tyres and lateral load transfer | Higher-fidelity comparison model |
-| `anfis_delta` | Data-driven, local affine | Learns one-sample changes in lateral velocity and yaw rate | Main ANFIS candidate and MPC-ready |
-| `anfis_direct` | Data-driven, local affine | Learns next lateral velocity and yaw rate directly | Experimental formulation |
-| `anfis_dot` | Data-driven, local affine | Learns lateral-velocity and yaw-rate derivatives | Experimental formulation |
-| `anfis_residuals` | Hybrid physics/data-driven | Learns the one-step error of `ltv` | Experimental formulation |
+| `anfis_delta` | Data-driven, local affine | Learns one-sample changes in lateral velocity and yaw rate | Comparison candidate and MPC-ready |
+| `anfis_direct` | Data-driven, local affine | Learns next lateral velocity and yaw rate directly | Comparison candidate and MPC-ready |
+| `anfis_dot` | Data-driven, local affine | Learns lateral-velocity and yaw-rate derivatives | Comparison candidate and MPC-ready |
+| `anfis_residuals` | Hybrid physics/data-driven | Learns the one-step error of `ltv` | Comparison candidate and MPC-ready |
 
 `anfis_residuals` and `anfis_residuals_2` use the same trained residual model.
 The first evaluates the nonlinear ANFIS output directly; the second uses its
-local affine matrix form.
+local affine matrix form. They are implementation alternatives, not separate
+models in the comparison table.
 
 The former `ltv_tv` model is not part of the model set. Torque vectoring is out
 of scope and none of the models in this document has an external yaw-moment
@@ -447,7 +448,7 @@ The affine versions of these equations are inserted into rows 2 and 4 of the
 six-state $A$, $B$, and $C$ matrices. The direct function and matrix function
 therefore execute the same locally affine update.
 
-This is the current primary ANFIS formulation. Its trainer:
+Its trainer:
 
 - reads `datasets_training.mat` and `datasets_evaluation.mat` separately;
 - rejects any rosbag path occurring in both splits;
@@ -485,11 +486,10 @@ $$
 This time scaling is an approximation: an absolute next-state map is tied more
 strongly to its training sample time than a derivative model.
 
-The current trainer is an older experimental workflow. It reads
-`datasets_training_simu.mat`, keeps one sample in five, and creates an 80/20
-random split of individual transitions. It should not be used for thesis-level
-held-out evaluation until it is migrated to independent real training and
-evaluation runs.
+Its trainer uses the same independent real training/evaluation run split,
+training-only normalization, filtering, one-in-five temporal downsampling,
+1000-transition per-training-run cap, and held-out best-epoch selection as
+`anfis_delta`.
 
 ## ANFIS derivative model (`anfis_dot`)
 
@@ -518,9 +518,9 @@ Euler-integration interpretation. However, the $\dot v_y$ target inherits the
 quality, sign convention, synchronization, and noise of the measured lateral
 acceleration.
 
-The current trainer uses the same legacy simulation dataset and random
-transition-level 80/20 split as `anfis_direct`. It is retained for formulation
-comparison but is not currently enabled in `compare_models.m`.
+Its trainer uses the same independent real training/evaluation run split and
+balanced preprocessing as the other ANFIS models. The evaluation runs are used
+only as ANFIS checking data and for the final model comparison.
 
 ## ANFIS LTV-residual model (`anfis_residuals`)
 
@@ -560,9 +560,10 @@ This formulation retains the known small-slip structure and asks ANFIS to
 learn only its systematic one-step error. Its runtime scaling assumes that a
 one-step residual scales linearly with the interval, which is an approximation.
 
-The current trainer is also an older experimental workflow based on
-`datasets_training_simu.mat` and a random 80/20 transition split. It must be
-migrated to independent real-data splits before a fair thesis comparison.
+Its trainer uses the same independent real training/evaluation run split and
+balanced preprocessing as the other ANFIS models. Residual targets are always
+generated with the current steering-only `ltv` implementation, so changing the
+LTV equations requires retraining this model.
 
 ## Comparison and interpretation notes
 

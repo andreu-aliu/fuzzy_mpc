@@ -6,13 +6,12 @@ dataset_file = fullfile("data", "datasets_evaluation.mat");
 
 % Models to compare
 models = {
-    % @anfis_direct, 'ANFIS direct'
+    @anfis_direct, 'ANFIS direct';
     @anfis_delta, 'ANFIS delta';
+    @anfis_dot, 'ANFIS derivative';
+    @anfis_residuals, 'ANFIS LTV residual';
     @nonlinear_bicycle, 'Nonlinear bicycle';
     @nonlinear_double_track, 'Nonlinear double track';
-    % @anfis_dot, 'ANFIS dot';
-    % @anfis_residuals, 'ANFIS residuals';
-    % @anfis_residuals_2, 'ANFIS residuals matrix';
     @ltv, 'LTV MPC';
 };
 
@@ -575,7 +574,7 @@ a = mod(a + pi, 2*pi) - pi;
 end
 
 function plotErrorSummary(ax, modelNames, rmse, mae, p95abs, ylab, ttl)
-axes(ax); %#ok<LAXES>
+axes(ax);
 hold on; grid on;
 
 modelNames = string(modelNames);
