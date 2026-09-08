@@ -2,11 +2,10 @@ function x_next = anfis_delta(X, U, dt)
 % X: [y vy psi r delta delta_dot]
 % U: [vx st Mtv]
     
-% Unpack state and inputs
-C = num2cell(X);
-[y vy psi r delta delta_dot] = deal(C{:});
-C = num2cell(U);
-[vx st mz] = deal(C{:});
+% Inputs are [longitudinal speed, steering command, yaw moment].
+vx = U(1);
+st = U(2);
+mz = U(3);
 
 % Load models
 persistent anfis_delta;
@@ -36,7 +35,7 @@ end
 % x_next = X + Xdot*dt;
 
 U_pred = [st; mz];
-[A, B, C] = anfis_delta_matrix(X, U_pred, vx);
+[A, B, C] = anfis_delta_matrix(X, U_pred, vx, dt);
 
 x_next =  A * X + B * U_pred + C; 
 

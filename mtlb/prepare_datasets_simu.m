@@ -61,14 +61,32 @@ disp(track_summary);
 
 fprintf('Preparing %d simulation training rosbags...\n', ...
         size(data_paths_training, 1));
-load_ros2bag_datasets(data_paths_training, Ts, "datasets_training_simu");
+[datasets_training, ~] = load_ros2bag_datasets( ...
+    data_paths_training, Ts, "datasets_training_simu");
 
 fprintf('\nPreparing %d simulation evaluation rosbags...\n', ...
         size(data_paths_eval, 1));
-load_ros2bag_datasets(data_paths_eval, Ts, "datasets_evaluation_simu");
+[datasets_eval, ~] = load_ros2bag_datasets( ...
+    data_paths_eval, Ts, "datasets_evaluation_simu");
+
+[~, ~, mz_summary] = summarize_dataset_paths(data_paths_training, ...
+    data_paths_eval, datasets_training, datasets_eval);
+print_mz_summary(mz_summary);
 
 fprintf('\nSimulation dataset preparation complete.\n');
 fprintf('  Training:   %s\n', ...
         fullfile(mtlb_dir, 'data', 'datasets_training_simu.mat'));
 fprintf('  Evaluation: %s\n', ...
         fullfile(mtlb_dir, 'data', 'datasets_evaluation_simu.mat'));
+
+function print_mz_summary(mz_summary)
+nonzero_runs = mz_summary(mz_summary.HasNonzeroMz,:);
+fprintf('\nYaw-moment data audit (|Mz| > 1e-9 Nm):\n');
+if isempty(nonzero_runs)
+    fprintf('All selected Mz samples are zero in every run.\n');
+else
+    fprintf('%d of %d runs contain nonzero Mz samples:\n', ...
+        height(nonzero_runs),height(mz_summary));
+    disp(nonzero_runs);
+end
+end

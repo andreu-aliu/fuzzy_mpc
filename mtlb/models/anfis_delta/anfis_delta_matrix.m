@@ -1,8 +1,14 @@
-function [A, B, C] = anfis_delta_matrix(X_pred, U_pred, vx)
+function [A, B, C] = anfis_delta_matrix(X_pred, U_pred, vx, dt)
 % The funciton returns the discrete state matrices for a given state (predicted + vx)
 % x_{k+1} = A x_k + B u_k + C
 % x: [y vy psi r delta delta_dot]
 % u: [st mz]
+
+if nargin < 4 || isempty(dt)
+    dt = 0.02;
+end
+validateattributes(dt, {'numeric'}, {'scalar','real','finite','positive'}, ...
+    mfilename, 'dt');
 
 % Load ANFIS model
 persistent anfis_delta;
@@ -20,12 +26,21 @@ assert(all(isfinite(mu)), 'mu invalid');
 assert(all(isfinite(sg)), 'sigma invalid');
 assert(all(abs(sg) > 1e-8), 'sigma too small or zero');
 
+% Scale the learned one-sample increments when the runtime step differs
+% from the sampling time used to construct the training targets.
+if isfield(anfis_delta, 'Ts')
+    training_dt = anfis_delta.Ts;
+else
+    training_dt = 0.02; % Backward compatibility with older MAT files.
+end
+step_scale = dt / training_dt;
+
 % Initialization
-dt = 0.02;
 A = zeros(6);
 B = zeros(6,2);
 C = zeros(6,1);
-y = X_pred(1); vy = X_pred(2); psi = X_pred(3); r = X_pred(4);
+vy = X_pred(2);
+psi = X_pred(3);
 
 % Anfis matrix for the predicted state [vy r vx delta mz]
 X_in = [X_pred(2) X_pred(4) vx X_pred(5) U_pred(2)];
@@ -59,19 +74,30 @@ Xin_n = (X_in - mu) ./ sg;
 A(1,1) = 1;
 A(1,2) = cos(psi) * dt;
 A(1,3) = (vx * cos(psi) - vy * sin(psi)) * dt;
-C(1) = dt*(vx*sin(psi)+vy*cos(psi) - A(1,2)*vy - A(1,3)*psi); 
+C(1) = dt*(vx*sin(psi)+vy*cos(psi)) ...
+    - A(1,2)*vy - A(1,3)*psi;
 
 % Vy dynamics
 [A_vy_n, b_vy_n, ~] = evalfis_mat(anfis_delta.vy.mat, Xin_n);
 
-A_vy = (A_vy_n(:) ./ sg');
-b_vy = b_vy_n - sum(A_vy_n(:) .* (mu' ./ sg'));
+A_vy = step_scale * (A_vy_n(:) ./ sg');
+b_vy = step_scale * (b_vy_n - sum(A_vy_n(:) .* (mu' ./ sg')));
 
-A(2,2) = A_vy(1) +1; % Effect of vy on vy
-A(2,4) = A_vy(2); % Effect of r  on vy
-A(2,5) = A_vy(4); % Effect of delta on vy
-B(2,2) = A_vy(5); % Effect of mz on vy
-C(2)   = b_vy + A_vy(3) * vx; % Effect of vx on vy
+% Linearize the saturation itself: an out-of-range input affects the
+% operating-point value at its bound but has zero local slope beyond it.
+active = ~(mask_low | mask_high);
+A_vy_effective = A_vy .* active(:);
+dvy_at_operating_point = b_vy + A_vy' * X_in(:);
+
+A(2,2) = A_vy_effective(1) + 1;
+A(2,4) = A_vy_effective(2);
+A(2,5) = A_vy_effective(4);
+B(2,2) = A_vy_effective(5);
+C(2) = dvy_at_operating_point ...
+    - A_vy_effective(1)*X_pred(2) ...
+    - A_vy_effective(2)*X_pred(4) ...
+    - A_vy_effective(4)*X_pred(5) ...
+    - A_vy_effective(5)*U_pred(2);
 
 % Psi kinematics
 A(3,4) = dt;
@@ -80,14 +106,20 @@ A(3,3) = 1;
 % R dynamics
 [A_r_n, b_r_n, ~] = evalfis_mat(anfis_delta.r.mat, Xin_n);
 
-A_r = (A_r_n(:) ./ sg');
-b_r = b_r_n - sum(A_r_n(:) .* (mu' ./ sg'));
+A_r = step_scale * (A_r_n(:) ./ sg');
+b_r = step_scale * (b_r_n - sum(A_r_n(:) .* (mu' ./ sg')));
+A_r_effective = A_r .* active(:);
+dr_at_operating_point = b_r + A_r' * X_in(:);
 
-A(4,2) = A_r(1); % Effect of vy on r
-A(4,4) = A_r(2) +1; % Effect of r  on r
-A(4,5) = A_r(4); % Effect of delta on r
-B(4,2) = A_r(5); % Effect of mz on r
-C(4)   = b_r + A_r(3) * vx; % Effect of vx on r
+A(4,2) = A_r_effective(1);
+A(4,4) = A_r_effective(2) + 1;
+A(4,5) = A_r_effective(4);
+B(4,2) = A_r_effective(5);
+C(4) = dr_at_operating_point ...
+    - A_r_effective(1)*X_pred(2) ...
+    - A_r_effective(2)*X_pred(4) ...
+    - A_r_effective(4)*X_pred(5) ...
+    - A_r_effective(5)*U_pred(2);
 
 % Steering dynamics (fordward-Euler discretization)
 wn = 16.0;

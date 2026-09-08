@@ -18,9 +18,14 @@ function y = sgolayfilt_custom(x, polyOrder, frameLen)
         error('polyOrder must be < frameLen');
     end
 
-    x = x(:);                 % force column
+    inputWasRow = isrow(x);
+    x = x(:);                 % use a column internally
     N = length(x);
     half = floor(frameLen/2);
+
+    if N < frameLen
+        error('Input length (%d) must be at least frameLen (%d).', N, frameLen);
+    end
 
     % --- build Vandermonde matrix ---
     t = (-half:half)';
@@ -29,22 +34,33 @@ function y = sgolayfilt_custom(x, polyOrder, frameLen)
         A(:,k+1) = t.^k;
     end
 
-    % --- least-squares projection matrix ---
-    % This gives convolution coefficients for smoothing
-    ATA_inv = inv(A' * A);
-    B = ATA_inv * A';
-    h = B(1,:);               % 0th derivative coefficients
+    % Interior convolution coefficients for the centered polynomial fit.
+    B = pinv(A);
+    h = B(1,:);
 
-    % --- apply convolution ---
-    y = zeros(N,1);
-    for i = 1:N
-        i1 = max(1, i-half);
-        i2 = min(N, i+half);
+    % Apply the centered filter where the full symmetric window exists.
+    y = conv(x, h, 'same');
 
-        % adjust kernel near edges
-        k1 = half+1 - (i - i1);
-        k2 = half+1 + (i2 - i);
+    % At each boundary, fit a full asymmetric window and evaluate the
+    % polynomial at the current sample. Truncating the centered kernel here
+    % would not preserve even a constant signal.
+    edgeIndices = [1:half, (N-half+1):N];
+    for i = edgeIndices
+        if i <= half
+            sampleIndices = 1:frameLen;
+        else
+            sampleIndices = (N-frameLen+1):N;
+        end
+        tLocal = sampleIndices(:) - i;
+        ALocal = zeros(frameLen, polyOrder+1);
+        for k = 0:polyOrder
+            ALocal(:,k+1) = tLocal.^k;
+        end
+        coefficients = ALocal \ x(sampleIndices);
+        y(i) = coefficients(1);
+    end
 
-        y(i) = h(k1:k2) * x(i1:i2);
+    if inputWasRow
+        y = y.';
     end
 end

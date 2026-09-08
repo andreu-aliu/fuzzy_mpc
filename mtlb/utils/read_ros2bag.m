@@ -1,8 +1,12 @@
-function data = read_ros2bag(bagPath, Ts)
+function [data, audit] = read_ros2bag(bagPath, Ts)
 
 % READ_ROS2_CAR_DATA
-% Reads ROS2 bag and returns synchronized timeseries object
-% All signals are interpolated to /as/c/state timestamps
+% Reads ROS2 bag and returns synchronized signals on a uniform time grid.
+% The optional second output contains raw timing and interpolation diagnostics.
+
+validateattributes(Ts, {'numeric'}, {'scalar','real','finite','positive'}, ...
+    mfilename, 'Ts');
+want_audit = nargout > 1;
 
 % Open bag
 bag = ros2bagreader(bagPath);
@@ -11,6 +15,8 @@ bag = ros2bagreader(bagPath);
 stateSel  = select(bag,"Topic","/as/c/state");
 stateMsgs = readMessages(stateSel);
 t_state = stateSel.MessageList.Time;
+
+assert_topic_not_empty(t_state, '/as/c/state');
 
 Ns = numel(stateMsgs);
 
@@ -39,6 +45,8 @@ steerSel  = select(bag,"Topic","/el/sensor/driver_inputs");
 steerMsgs = readMessages(steerSel);
 t_steer = steerSel.MessageList.Time;
 
+assert_topic_not_empty(t_steer, '/el/sensor/driver_inputs');
+
 Nst = numel(steerMsgs);
 
 steering = zeros(Nst,1);
@@ -54,6 +62,8 @@ steerCmdSel  = select(bag,"Topic","/as/c/steering");
 steerCmdMsgs = readMessages(steerCmdSel);
 t_steerCmd = steerCmdSel.MessageList.Time;
 
+assert_topic_not_empty(t_steerCmd, '/as/c/steering');
+
 NstCmd = numel(steerCmdMsgs);
 
 steeringCmd = zeros(NstCmd,1);
@@ -68,6 +78,8 @@ end
 tvSel  = select(bag,"Topic","/ctrl/llc/torque_vectoring");
 tvMsgs = readMessages(tvSel);
 t_tv = tvSel.MessageList.Time;
+
+assert_topic_not_empty(t_tv, '/ctrl/llc/torque_vectoring');
 
 Nt = numel(tvMsgs);
 
@@ -87,6 +99,20 @@ for i = 1:Nt
     Trr(i) = msg.rear_right_torque;
 end
 
+% Record raw timing quality before duplicates are removed.
+if want_audit
+    audit.Ts = Ts;
+    audit.timing.state = timestamp_stats(t_state, Ts);
+    audit.timing.steering = timestamp_stats(t_steer, Ts);
+    audit.timing.steering_command = timestamp_stats(t_steerCmd, Ts);
+    audit.timing.torque_vectoring = timestamp_stats(t_tv, Ts);
+end
+
+assert_monotonic_time(t_state, '/as/c/state');
+assert_monotonic_time(t_steer, '/el/sensor/driver_inputs');
+assert_monotonic_time(t_steerCmd, '/as/c/steering');
+assert_monotonic_time(t_tv, '/ctrl/llc/torque_vectoring');
+
 % REMOVE DUPLICATES
 t0 = t_state(1);
 
@@ -94,6 +120,15 @@ t_state    = t_state - t0;
 t_steer    = t_steer - t0;
 t_steerCmd = t_steerCmd - t0;
 t_tv       = t_tv - t0;
+
+[t_state_unique, idx_state] = unique(t_state, 'stable');
+x_unique = x(idx_state);
+y_unique = y(idx_state);
+vx_unique = vx(idx_state);
+vy_unique = vy(idx_state);
+r_unique = r(idx_state);
+ax_unique = ax(idx_state);
+ay_unique = ay(idx_state);
 
 [t_steer_unique, idx_steer] = unique(t_steer, 'stable');
 steering_unique = steering(idx_steer);
@@ -115,13 +150,13 @@ t_end   = min([t_state(end), t_steer_unique(end), t_steerCmd_unique(end), t_tv_u
 
 t_uniform = (t_start:Ts:t_end)';
 
-x_100  = interp1(t_state, x,  t_uniform, 'linear');
-y_100  = interp1(t_state, y,  t_uniform, 'linear');
-vx_100 = interp1(t_state, vx, t_uniform, 'linear');
-vy_100 = interp1(t_state, vy, t_uniform, 'linear');
-r_100  = interp1(t_state, r,  t_uniform, 'linear');
-ax_100 = interp1(t_state, ax, t_uniform, 'linear');
-ay_100 = interp1(t_state, ay, t_uniform, 'linear');
+x_100  = interp1(t_state_unique, x_unique,  t_uniform, 'linear');
+y_100  = interp1(t_state_unique, y_unique,  t_uniform, 'linear');
+vx_100 = interp1(t_state_unique, vx_unique, t_uniform, 'linear');
+vy_100 = interp1(t_state_unique, vy_unique, t_uniform, 'linear');
+r_100  = interp1(t_state_unique, r_unique,  t_uniform, 'linear');
+ax_100 = interp1(t_state_unique, ax_unique, t_uniform, 'linear');
+ay_100 = interp1(t_state_unique, ay_unique, t_uniform, 'linear');
 
 steering_100 = interp1(t_steer_unique, steering_unique, ...
                        t_uniform, 'linear');
@@ -143,6 +178,8 @@ trim_confirm_time = 0.50;   % [s] required moving time
 
 [keepStart, keepEnd] = vx_moving_window(vx_100, Ts, vx_trim_threshold, trim_confirm_time);
 
+t_uniform_absolute = t_uniform(keepStart:keepEnd);
+trim_time_origin = t_uniform_absolute(1);
 t_uniform = t_uniform(keepStart:keepEnd);
 t_uniform = t_uniform - t_uniform(1);
 
@@ -184,6 +221,42 @@ data.Tfl = Tfl_100;
 data.Tfr = Tfr_100;
 data.Trl = Trl_100;
 data.Trr = Trr_100;
+
+if want_audit
+    % Times use the same zero as data.time.
+    audit.raw.state.time = t_state_unique - trim_time_origin;
+    audit.raw.state.x = x_unique;
+    audit.raw.state.y = y_unique;
+    audit.raw.state.vx = vx_unique;
+    audit.raw.state.vy = vy_unique;
+    audit.raw.state.r = r_unique;
+    audit.raw.state.ax = ax_unique;
+    audit.raw.state.ay = ay_unique;
+
+    audit.raw.steering.time = t_steer_unique - trim_time_origin;
+    audit.raw.steering.value = steering_unique;
+    audit.raw.steering_command.time = t_steerCmd_unique - trim_time_origin;
+    audit.raw.steering_command.value = steerCmd_unique;
+    audit.raw.torque_vectoring.time = t_tv_unique - trim_time_origin;
+    audit.raw.torque_vectoring.mz = mz_unique;
+    audit.raw.torque_vectoring.Tfl = Tfl_unique;
+    audit.raw.torque_vectoring.Tfr = Tfr_unique;
+    audit.raw.torque_vectoring.Trl = Trl_unique;
+    audit.raw.torque_vectoring.Trr = Trr_unique;
+
+    audit.uniform_time = data.time;
+    audit.trim.original_start = trim_time_origin;
+    audit.trim.keep_start = keepStart;
+    audit.trim.keep_end = keepEnd;
+    audit.nearest_distance.state = nearest_sample_distance( ...
+        t_uniform_absolute, t_state_unique);
+    audit.nearest_distance.steering = nearest_sample_distance( ...
+        t_uniform_absolute, t_steer_unique);
+    audit.nearest_distance.steering_command = nearest_sample_distance( ...
+        t_uniform_absolute, t_steerCmd_unique);
+    audit.nearest_distance.torque_vectoring = nearest_sample_distance( ...
+        t_uniform_absolute, t_tv_unique);
+end
 end
 
 function [keepStart, keepEnd] = vx_moving_window(vx, Ts, vxThreshold, confirmTime)
@@ -227,4 +300,45 @@ end
 % 'valid' output indices correspond to window start indices
 keepStart = firstIdx;
 keepEnd = lastIdx + confirmSamples - 1;
+end
+
+function assert_topic_not_empty(t, topic)
+if isempty(t)
+    error('Required topic "%s" contains no messages.', topic);
+end
+end
+
+function assert_monotonic_time(t, topic)
+if any(diff(t) < 0)
+    error('Topic "%s" contains backward timestamp jumps.', topic);
+end
+end
+
+function stats = timestamp_stats(t, Ts)
+dt = diff(t(:));
+positive_dt = dt(dt > 0);
+
+stats.message_count = numel(t);
+stats.duration = t(end) - t(1);
+stats.duplicate_count = sum(dt == 0);
+stats.backward_count = sum(dt < 0);
+stats.gaps_over_2Ts = sum(dt > 2*Ts);
+stats.gaps_over_3Ts = sum(dt > 3*Ts);
+
+if isempty(positive_dt)
+    stats.median_dt = NaN;
+    stats.p95_dt = NaN;
+    stats.max_dt = NaN;
+    stats.median_rate_hz = NaN;
+else
+    stats.median_dt = median(positive_dt);
+    stats.p95_dt = prctile(positive_dt, 95);
+    stats.max_dt = max(positive_dt);
+    stats.median_rate_hz = 1 / stats.median_dt;
+end
+end
+
+function distance = nearest_sample_distance(query_time, raw_time)
+nearest_time = interp1(raw_time, raw_time, query_time, 'nearest');
+distance = abs(query_time - nearest_time);
 end

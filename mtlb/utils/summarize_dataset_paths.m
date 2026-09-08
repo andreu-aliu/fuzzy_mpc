@@ -1,9 +1,15 @@
-function [event_summary, track_summary] = summarize_dataset_paths( ...
-    data_paths_training, data_paths_eval)
-%SUMMARIZE_DATASET_PATHS Count runs separately by event and track layout.
+function [event_summary, track_summary, mz_summary] = summarize_dataset_paths( ...
+    data_paths_training, data_paths_eval, datasets_training, datasets_eval)
+%SUMMARIZE_DATASET_PATHS Summarize the configured dataset split.
 % The sixth column (track_id) may be empty for acceleration and skidpad,
 % because those events define their own layout. Autox and trackdrive require
-% a positive integer track ID.
+% a positive integer track ID. When the optional loaded datasets are given,
+% the third output reports whether each selected run contains nonzero Mz.
+
+if nargin ~= 2 && nargin ~= 4
+    error(['Use two inputs for path summaries or four inputs to also ' ...
+        'summarize loaded Mz data.']);
+end
 
 validate_path_table(data_paths_training, 'training');
 validate_path_table(data_paths_eval, 'evaluation');
@@ -59,6 +65,81 @@ is_training(1:n_training) = true;
 
 event_summary = build_run_summary(events, is_training);
 track_summary = build_lap_summary(track_layouts, laps, is_training);
+
+if nargin == 4
+    mz_summary = build_mz_summary(data_paths_training, data_paths_eval, ...
+        datasets_training, datasets_eval);
+else
+    mz_summary = table();
+end
+end
+
+function summary = build_mz_summary(data_paths_training, data_paths_eval, ...
+        datasets_training, datasets_eval)
+mz_zero_tolerance = 1e-9;
+
+if numel(datasets_training) ~= size(data_paths_training,1)
+    error('Loaded training-run count does not match data_paths_training.');
+end
+if numel(datasets_eval) ~= size(data_paths_eval,1)
+    error('Loaded evaluation-run count does not match data_paths_eval.');
+end
+
+datasets = [datasets_training(:); datasets_eval(:)];
+split = [repmat("training",numel(datasets_training),1); ...
+    repmat("evaluation",numel(datasets_eval),1)];
+run_in_split = [(1:numel(datasets_training))'; (1:numel(datasets_eval))'];
+n_runs = numel(datasets);
+
+event = strings(n_runs,1);
+track_layout = strings(n_runs,1);
+path = strings(n_runs,1);
+has_nonzero_mz = false(n_runs,1);
+nonzero_samples = zeros(n_runs,1);
+total_samples = zeros(n_runs,1);
+nonzero_percent = zeros(n_runs,1);
+max_abs_mz = zeros(n_runs,1);
+
+for i = 1:n_runs
+    if ~isfield(datasets(i).data,'mz')
+        error('%s run %d has no data.mz field.',split(i),run_in_split(i));
+    end
+
+    mz = datasets(i).data.mz(:);
+    ini = datasets(i).ini;
+    fin = datasets(i).fin;
+    if isempty(ini), ini = 1; end
+    if isempty(fin), fin = numel(mz); end
+
+    validateattributes(ini,{'numeric'}, ...
+        {'scalar','real','finite','integer','>=',1},mfilename,'ini');
+    validateattributes(fin,{'numeric'}, ...
+        {'scalar','real','finite','integer','<=',numel(mz)},mfilename,'fin');
+    if fin < ini
+        error('%s run %d has fin < ini.',split(i),run_in_split(i));
+    end
+
+    selected_mz = mz(ini:fin);
+    if any(~isfinite(selected_mz))
+        error('%s run %d contains non-finite Mz samples.', ...
+            split(i),run_in_split(i));
+    end
+
+    is_nonzero = abs(selected_mz) > mz_zero_tolerance;
+    event(i) = string(datasets(i).event);
+    track_layout(i) = string(datasets(i).track_layout);
+    path(i) = string(datasets(i).path);
+    has_nonzero_mz(i) = any(is_nonzero);
+    nonzero_samples(i) = sum(is_nonzero);
+    total_samples(i) = numel(selected_mz);
+    nonzero_percent(i) = 100*mean(is_nonzero);
+    max_abs_mz(i) = max(abs(selected_mz));
+end
+
+summary = table(split,run_in_split,event,track_layout,has_nonzero_mz, ...
+    nonzero_samples,total_samples,nonzero_percent,max_abs_mz,path, ...
+    'VariableNames',{'Split','Run','Event','TrackLayout','HasNonzeroMz', ...
+    'NonzeroMzSamples','TotalSamples','NonzeroPercent','MaxAbsMz','Path'});
 end
 
 function summary = build_run_summary(events, is_training)

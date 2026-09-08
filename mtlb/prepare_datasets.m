@@ -35,7 +35,7 @@ data_paths_training = {
     % 8/7/26
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-08/2026-07-08__run_2", [], [], "autox", [], 2;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-08/2026-07-08__run_5", [], [], "autox", [], 2;
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-08/2026-07-08__run_10", [], [], "autox", [], 2;
+    % "/media/andreu/200GB Toshiba/TFM Data/2026-07-08/2026-07-08__run_10", [], [], "autox", [], 2;
     % 12/7/26
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_10", [], [], "autox", [], 3;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_11", [], [], "trackdrive", [], 3;
@@ -46,14 +46,13 @@ data_paths_training = {
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_57", [], [], "acceleration", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_58", [], [], "skidpad", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_65", [], [], "skidpad", [], [];
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_69", [], [], "skidpad", [], [];
+    % "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_69", [], [], "skidpad", [], [];
     % 30/7/26
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_7", [], [], "acceleration", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_15", [], [], "acceleration", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_20", [], [], "acceleration", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_29", [], [], "acceleration", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_31", [], [], "acceleration", [], [];
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_38", [], [], "acceleration", [], [];
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-30/2026-07-30__run_39", [], [], "acceleration", [], [];
 
 
@@ -70,7 +69,7 @@ data_paths_eval = {
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_16", [], [], "autox", [], 3;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_42", [], [], "autox", [], 3;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-05/05-07-2026__run_4", [], [], "autox", [], 1;
-    "/media/andreu/200GB Toshiba/TFM Data/2026-07-08/2026-07-08__run_9", [], [], "autox", [], 2;
+    % "/media/andreu/200GB Toshiba/TFM Data/2026-07-08/2026-07-08__run_9", [], [], "autox", [], 2;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_31", [], [], "autox", [], 3;
     "/media/andreu/200GB Toshiba/TFM Data/2026-07-12/2026-07-12__run_8", [], [], "autox", [], 3;
 };
@@ -93,13 +92,31 @@ disp(track_summary);
 %% Generate MAT files
 
 fprintf('Preparing %d real training rosbags...\n', size(data_paths_training, 1));
-load_ros2bag_datasets(data_paths_training, Ts, "datasets_training");
+[datasets_training, ~] = load_ros2bag_datasets( ...
+    data_paths_training, Ts, "datasets_training");
 
 fprintf('\nPreparing %d real evaluation rosbags...\n', size(data_paths_eval, 1));
-load_ros2bag_datasets(data_paths_eval, Ts, "datasets_evaluation");
+[datasets_eval, ~] = load_ros2bag_datasets( ...
+    data_paths_eval, Ts, "datasets_evaluation");
+
+[~, ~, mz_summary] = summarize_dataset_paths(data_paths_training, ...
+    data_paths_eval, datasets_training, datasets_eval);
+print_mz_summary(mz_summary);
 
 fprintf('\nReal dataset preparation complete.\n');
 fprintf('  Training:   %s\n', ...
         fullfile(mtlb_dir, 'data', 'datasets_training.mat'));
 fprintf('  Evaluation: %s\n', ...
         fullfile(mtlb_dir, 'data', 'datasets_evaluation.mat'));
+
+function print_mz_summary(mz_summary)
+nonzero_runs = mz_summary(mz_summary.HasNonzeroMz,:);
+fprintf('\nYaw-moment data audit (|Mz| > 1e-9 Nm):\n');
+if isempty(nonzero_runs)
+    fprintf('All selected Mz samples are zero in every run.\n');
+else
+    fprintf('%d of %d runs contain nonzero Mz samples:\n', ...
+        height(nonzero_runs),height(mz_summary));
+    disp(nonzero_runs);
+end
+end

@@ -4,12 +4,16 @@ function x_next = sim_anfis_delta(X, U, vx_next, dt)
 % U = [delta_cmd, M_TV]
 % dt: timestep [s]
 
-% State and Inputs
-C = num2cell(X);
-[x, y, psi, vx, vy, r, delta, vel_delta] = deal(C{:});
+% State and inputs
+psi = X(3);
+vx = X(4);
+vy = X(5);
+r = X(6);
+delta = X(7);
+vel_delta = X(8);
 delta = min(max(delta, -0.45), 0.45);
-C = num2cell(U);
-[delta_cmd, mz] = deal(C{:});
+delta_cmd = U(1);
+mz = U(2);
 
 % Load models
 persistent anfis_delta;
@@ -25,8 +29,6 @@ mask_high = Xin > anfis_delta.norm.x_max;
 if any(mask_low) || any(mask_high)
     fprintf("Simulator model: input vector outside training range\n");
     Xin = min(max(Xin, anfis_delta.norm.x_min), anfis_delta.norm.x_max);
-    vy = Xin(1);
-    r = Xin(2);
 end
 Xin_n = (Xin - anfis_delta.norm.mu) ./ anfis_delta.norm.sigma;
 
@@ -34,21 +36,19 @@ Xin_n = (Xin - anfis_delta.norm.mu) ./ anfis_delta.norm.sigma;
 [~, ~,dvy] = evalfis_mat(anfis_delta.vy.mat, Xin_n);
 [~, ~,dr]  = evalfis_mat(anfis_delta.r.mat,  Xin_n);
 
-% Convert to derivatives
-vy_dot = dvy / dt;
-r_dot  = dr  / dt;
+% The learned outputs are increments over the dataset sampling period.
+if isfield(anfis_delta, 'Ts')
+    training_dt = anfis_delta.Ts;
+else
+    training_dt = 0.02; % Backward compatibility with older MAT files.
+end
+vy_dot = dvy / training_dt;
+r_dot  = dr  / training_dt;
 
 % Kinematics
 x_dot   = vx*cos(psi) - vy*sin(psi);
 y_dot   = vx*sin(psi) + vy*cos(psi);
 psi_dot = r;
-
-% Linearized y update (same as matrix model)
-Ay_vy  = cos(psi) * dt;
-Ay_psi = (vx * cos(psi) - vy * sin(psi)) * dt;
-Cy     = dt*(vx*sin(psi) + vy*cos(psi) - Ay_vy*vy - Ay_psi*psi);
-
-y_next = y + Ay_vy*vy + Ay_psi*psi + Cy;
 
 % Steering dynamics
 wn = 16.0;

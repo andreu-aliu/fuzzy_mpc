@@ -60,7 +60,7 @@ for i = 1:Np
     X_sim{i+1} = sim_anfis_delta(X_sim{i}, U{i}, vx, dt);
 
     % Model matrices
-    [Ad{i}, Bd{i}, Cd{i}] = anfis_delta_matrix(X_mat{i}, U{i}', X_sim{i}(4));
+    [Ad{i}, Bd{i}, Cd{i}] = anfis_delta_matrix(X_mat{i}, U{i}', X_sim{i}(4), dt);
     % Output from matrices
     X_mat{i+1} = (Ad{i} * X_mat{i}' + Bd{i} * U{i}' + Cd{i})';
 end
