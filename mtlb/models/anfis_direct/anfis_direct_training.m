@@ -1,8 +1,8 @@
 % Train ANFIS model to replicat system dynamics
-% inputs: [vy r vx delta mz] normalized
+% inputs: [vy r vx delta] normalized
 % output: [vy_next r_next]
 cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'))
-clear all
+clear
 
 keep_factor = 5; % Keep one of every - samples
 validation_fraction = 0.2; % Define the fraction of data for validation
@@ -18,7 +18,6 @@ in.vy = []; out.vy = [];
 in.r  = []; out.r  = [];
 in.vx = [];
 in.delta = [];
-in.mz = [];
 
 for i = 1:numel(datasets)
     data = datasets(i).data;
@@ -37,7 +36,6 @@ for i = 1:numel(datasets)
     data.r  = sgolayfilt_custom(data.r, 3, 21);
     data.vy = sgolayfilt_custom(data.vy, 3, 21);
     data.delta = sgolayfilt_custom(data.delta, 3, 21);
-    data.mz = sgolayfilt_custom(data.mz, 3, 21);
     data.vx = sgolayfilt_custom(data.vx, 3, 21);
 
     % Resample (keep only some data)
@@ -49,7 +47,6 @@ for i = 1:numel(datasets)
     in.r  = [in.r ; data.r(idx)];
     in.vx = [in.vx; data.vx(idx)];
     in.delta = [in.delta; data.delta(idx)];
-    in.mz = [in.mz; data.mz(idx)];
     
     % Predicted is next vy,r
     out.vy = [out.vy; data.vy(idx_next)];
@@ -59,13 +56,14 @@ for i = 1:numel(datasets)
 end
 
 % Normalization
-X = [in.vy in.r in.vx in.delta in.mz];
+X = [in.vy in.r in.vx in.delta];
 Y = [out.vy out.r];
 [Xn, mu, sigma] = zscore(X);
 anfis_direct.norm.mu = mu;
 anfis_direct.norm.sigma = sigma;
 anfis_direct.norm.x_min = min(X,[],1);
 anfis_direct.norm.x_max = max(X,[],1);
+anfis_direct.Ts = Ts;
 
 % Save max/min of the predictions
 anfis_direct.vy.min = min(out.vy);
@@ -119,7 +117,10 @@ opt.DisplayStepSize    = true;
 opt.DisplayANFISInformation = true;
 opt.DisplayFinalResults = true;
 
-[anfis_direct.vy.fis, trainError, ~, fis_val, valError] = anfis([Xn_train Y_train(:,1)], opt);
+[vy_final_fis, trainError, ~, vy_validation_fis, valError] = ...
+    anfis([Xn_train Y_train(:,1)], opt);
+anfis_direct.vy.fis=vy_validation_fis;
+anfis_direct.vy.final_epoch_fis=vy_final_fis;
 
 % Save model
 save('models/anfis_direct/anfis_direct.mat','anfis_direct')
@@ -152,7 +153,10 @@ opt.DisplayStepSize    = true;
 opt.DisplayANFISInformation = true;
 opt.DisplayFinalResults = true;
 
-[anfis_direct.r.fis, trainError, ~, fis_val, valError] = anfis([Xn_train Y_train(:,2)], opt);
+[r_final_fis, trainError, ~, r_validation_fis, valError] = ...
+    anfis([Xn_train Y_train(:,2)], opt);
+anfis_direct.r.fis=r_validation_fis;
+anfis_direct.r.final_epoch_fis=r_final_fis;
 
 % Save model
 save('models/anfis_direct/anfis_direct.mat','anfis_direct')
@@ -170,6 +174,6 @@ save('models/anfis_direct/anfis_direct.mat','anfis_direct')
 % Model to evaluate
 fis = anfis_direct.r.fis;
 anfis_model_insights(fis, Xn, trainError, valError, ...
-    'inputLabels', {'vy','r','vx','delta','mz'}, ...
+    'inputLabels', {'vy','r','vx','delta'}, ...
     'titlePrefix', 'anfis\_direct.r', ...
     'figBase', 20);

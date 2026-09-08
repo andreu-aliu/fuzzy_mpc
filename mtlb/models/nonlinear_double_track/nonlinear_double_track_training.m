@@ -28,7 +28,7 @@ Ts = loaded.meta.Ts;
 
 %% Build a balanced identification dataset
 
-samples = struct('vy', [], 'r', [], 'vx', [], 'delta', [], 'mz', [], ...
+samples = struct('vy', [], 'r', [], 'vx', [], 'delta', [], ...
                  'vy_next', [], 'r_next', [], 'weight', []);
 
 for run_idx = 1:numel(datasets)
@@ -54,13 +54,12 @@ for run_idx = 1:numel(datasets)
     r = sgolayfilt_custom(data.r, filter_order, filter_window);
     vx = sgolayfilt_custom(data.vx, filter_order, filter_window);
     delta = sgolayfilt_custom(data.delta, filter_order, filter_window);
-    mz = sgolayfilt_custom(data.mz, filter_order, filter_window);
 
     idx = (ini:keep_factor:(fin - 1))';
     valid = isfinite(vy(idx)) & isfinite(vy(idx + 1)) & ...
             isfinite(r(idx)) & isfinite(r(idx + 1)) & ...
             isfinite(vx(idx)) & isfinite(delta(idx)) & ...
-            isfinite(mz(idx)) & vx(idx) >= min_vx;
+            vx(idx) >= min_vx;
     idx = idx(valid);
 
     if numel(idx) > max_samples_per_run
@@ -80,7 +79,6 @@ for run_idx = 1:numel(datasets)
     samples.r = [samples.r; r(idx)];
     samples.vx = [samples.vx; vx(idx)];
     samples.delta = [samples.delta; delta(idx)];
-    samples.mz = [samples.mz; mz(idx)];
     samples.vy_next = [samples.vy_next; vy(idx + 1)];
     samples.r_next = [samples.r_next; r(idx + 1)];
     samples.weight = [samples.weight; ...
@@ -207,7 +205,7 @@ end
 function [vy_next, r_next] = predict_lateral(theta, samples, fixed, dt)
 p = apply_parameters(fixed, theta);
 [vy_dot, r_dot] = nonlinear_double_track_dynamics( ...
-    samples.vy, samples.r, samples.vx, samples.delta, samples.mz, p);
+    samples.vy, samples.r, samples.vx, samples.delta, p);
 vy_next = samples.vy + dt .* vy_dot;
 r_next = samples.r + dt .* r_dot;
 end

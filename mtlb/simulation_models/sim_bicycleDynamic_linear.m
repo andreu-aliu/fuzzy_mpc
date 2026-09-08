@@ -1,19 +1,16 @@
 function x_next = sim_bicycleDynamic_linear(X, U, vx_next, dt)
 % BICYCLE DYNAMIC MODEL
 % X = [x, y, psi, vx, vy, r, delta, delta_dot]
-% U = [delta_cmd, M_TV]
+% U = steering command
 % dt: timestep [s]
 
 % Car parameters
-m = 220;
+m = 215;
 Iz = 188;
 lf = 0.765;
 lr = 0.765;
 Cf = 1.2705 * 10.5507 * 1104.0;
 Cr = 1.2705 * 10.5507 * 1281.5;
-Rw = 0.2032;
-rho = 1.225;
-SCd = 1.854;
 wn = 16.0;
 zeta = 0.5;
 
@@ -21,8 +18,7 @@ zeta = 0.5;
 C = num2cell(X);
 [x, y, psi, vx, vy, r, delta, vel_delta] = deal(C{:});
 delta = min(max(delta, -0.45), 0.45);
-C = num2cell(U);
-[delta_cmd, M_TV] = deal(C{:});
+delta_cmd=U(1);
 
 % 1. Slip angles
 vx_eff = max(vx, 0.25); % If the vx is too slow, prevent division by zero
@@ -40,7 +36,7 @@ Fxr = Fx_total/2;
 
 % 3. Equations of motion
 vy_dot = 1/m*(Fxf*sin(delta)+Fyf*cos(delta)+Fyr)-vx*r;
-r_dot = (lf*(Fxf*sin(delta) + Fyf*cos(delta)) - lr*Fyr + M_TV) / Iz;
+r_dot = (lf*(Fxf*sin(delta)+Fyf*cos(delta))-lr*Fyr)/Iz;
 
 x_dot = vx*cos(psi)-vy*sin(psi);
 y_dot = vx*sin(psi)+vy*cos(psi);

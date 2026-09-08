@@ -1,8 +1,8 @@
-function [A, B, C] = anfis_delta_matrix(X_pred, U_pred, vx, dt)
+function [A, B, C] = anfis_delta_matrix(X_pred, ~, vx, dt)
 % The funciton returns the discrete state matrices for a given state (predicted + vx)
 % x_{k+1} = A x_k + B u_k + C
 % x: [y vy psi r delta delta_dot]
-% u: [st mz]
+% u: steering command
 
 if nargin < 4 || isempty(dt)
     dt = 0.02;
@@ -37,13 +37,13 @@ step_scale = dt / training_dt;
 
 % Initialization
 A = zeros(6);
-B = zeros(6,2);
+B = zeros(6,1);
 C = zeros(6,1);
 vy = X_pred(2);
 psi = X_pred(3);
 
-% Anfis matrix for the predicted state [vy r vx delta mz]
-X_in = [X_pred(2) X_pred(4) vx X_pred(5) U_pred(2)];
+% ANFIS input vector [vy r vx delta]
+X_in = [X_pred(2) X_pred(4) vx X_pred(5)];
 
 % Detect extrapolation and clamp
 mask_low  = X_in < xmin;
@@ -53,7 +53,7 @@ if any(mask_low) || any(mask_high)
 
     fprintf('\n===== ANFIS EXTRAPOLATION DETECTED =====\n');
 
-    labels = {'vy','r','vx','delta','mz'};
+    labels = {'vy','r','vx','delta'};
 
     for j = 1:length(X_in)
         if mask_low(j) || mask_high(j)
@@ -92,12 +92,10 @@ dvy_at_operating_point = b_vy + A_vy' * X_in(:);
 A(2,2) = A_vy_effective(1) + 1;
 A(2,4) = A_vy_effective(2);
 A(2,5) = A_vy_effective(4);
-B(2,2) = A_vy_effective(5);
 C(2) = dvy_at_operating_point ...
     - A_vy_effective(1)*X_pred(2) ...
     - A_vy_effective(2)*X_pred(4) ...
-    - A_vy_effective(4)*X_pred(5) ...
-    - A_vy_effective(5)*U_pred(2);
+    - A_vy_effective(4)*X_pred(5);
 
 % Psi kinematics
 A(3,4) = dt;
@@ -114,12 +112,10 @@ dr_at_operating_point = b_r + A_r' * X_in(:);
 A(4,2) = A_r_effective(1);
 A(4,4) = A_r_effective(2) + 1;
 A(4,5) = A_r_effective(4);
-B(4,2) = A_r_effective(5);
 C(4) = dr_at_operating_point ...
     - A_r_effective(1)*X_pred(2) ...
     - A_r_effective(2)*X_pred(4) ...
-    - A_r_effective(4)*X_pred(5) ...
-    - A_r_effective(5)*U_pred(2);
+    - A_r_effective(4)*X_pred(5);
 
 % Steering dynamics (fordward-Euler discretization)
 wn = 16.0;
@@ -134,6 +130,6 @@ As = eye(2) + As_c * dt;
 Bs = Bs_c * dt;
 
 A(5:6,5:6) = As; % Effect of [delta,delta_dot] on [delta,delta_dot]
-B(5:6,1) = Bs;   % Effect of st on [delta,delta_dot]
+B(5:6,1) = Bs;   % Effect of steering command
 
 end

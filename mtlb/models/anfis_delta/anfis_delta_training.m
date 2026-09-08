@@ -1,5 +1,5 @@
 %% Train ANFIS models for one-step lateral-state increments
-% Inputs:  [vy, r, vx, delta, Mz]
+% Inputs:  [vy, r, vx, delta]
 % Outputs: [vy(k+1)-vy(k), r(k+1)-r(k)]
 
 clear;
@@ -18,8 +18,7 @@ model_file = fullfile("models", "anfis_delta", "anfis_delta.mat");
 keep_factor = 5;       % Keep one transition out of every keep_factor samples.
 filter_order = 3;
 filter_window = 21;
-balance_training_runs = true;
-samples_per_training_run = []; % [] uses the median number of samples per run.
+max_samples_per_training_run = 1000; % Cap long runs; never repeat short runs.
 
 %% Load the independent training and validation runs
 
@@ -46,9 +45,9 @@ training_runs = build_run_samples(training_source.datasets, keep_factor, ...
 validation_runs = build_run_samples(validation_source.datasets, keep_factor, ...
     filter_order, filter_window, "validation");
 
-[X_train, Y_train, training_run_id] = concatenate_runs(training_runs, ...
-    balance_training_runs, samples_per_training_run);
-[X_val, Y_val, validation_run_id] = concatenate_runs(validation_runs, false, []);
+[X_train, Y_train, training_run_id] = concatenate_runs( ...
+    training_runs,max_samples_per_training_run);
+[X_val, Y_val, validation_run_id] = concatenate_runs(validation_runs,[]);
 
 fprintf('Training:   %d points from %d independent runs.\n', ...
     size(X_train, 1), numel(training_runs));
@@ -81,7 +80,7 @@ anfis_delta.training.validation_dataset_file = validation_dataset_file;
 anfis_delta.training.keep_factor = keep_factor;
 anfis_delta.training.filter_order = filter_order;
 anfis_delta.training.filter_window = filter_window;
-anfis_delta.training.balance_runs = balance_training_runs;
+anfis_delta.training.max_samples_per_run = max_samples_per_training_run;
 anfis_delta.training.training_run_id = training_run_id;
 anfis_delta.training.validation_run_id = validation_run_id;
 
@@ -150,7 +149,7 @@ fprintf('Saved held-out-validation ANFIS model to %s\n', model_file);
 
 anfis_model_insights(anfis_delta.r.fis, Xn_train, ...
     r_train_error, r_val_error, ...
-    'inputLabels', {'vy','r','vx','delta','mz'}, ...
+    'inputLabels', {'vy','r','vx','delta'}, ...
     'titlePrefix', 'anfis\_delta.r', ...
     'figBase', 0);
 
@@ -166,7 +165,7 @@ arguments
     split_name (1,1) string
 end
 
-required_signals = {'vy', 'r', 'vx', 'delta', 'mz'};
+required_signals = {'vy', 'r', 'vx', 'delta'};
 runs = repmat(struct('X', [], 'Y', []), numel(datasets), 1);
 
 for run_idx = 1:numel(datasets)
@@ -217,8 +216,8 @@ for run_idx = 1:numel(datasets)
 
     idx = (1:keep_factor:(numel(selected)-1))';
     idx_next = idx + 1;
-    X = [filtered.vy(idx), filtered.r(idx), filtered.vx(idx), ...
-        filtered.delta(idx), filtered.mz(idx)];
+    X = [filtered.vy(idx),filtered.r(idx),filtered.vx(idx), ...
+        filtered.delta(idx)];
     Y = [filtered.vy(idx_next) - filtered.vy(idx), ...
         filtered.r(idx_next) - filtered.r(idx)];
 
@@ -235,26 +234,22 @@ for run_idx = 1:numel(datasets)
 end
 end
 
-function [X, Y, run_id] = concatenate_runs(runs, balance_runs, requested_count)
+function [X,Y,run_id] = concatenate_runs(runs,max_samples_per_run)
 counts = arrayfun(@(run) size(run.X, 1), runs);
-if balance_runs
-    if isempty(requested_count)
-        requested_count = round(median(counts));
-    end
-    validateattributes(requested_count, {'numeric'}, ...
+if ~isempty(max_samples_per_run)
+    validateattributes(max_samples_per_run, {'numeric'}, ...
         {'scalar','real','finite','integer','positive'}, ...
-        mfilename, 'samples_per_training_run');
-else
-    requested_count = [];
+        mfilename, 'max_samples_per_run');
 end
 
 X_parts = cell(numel(runs), 1);
 Y_parts = cell(numel(runs), 1);
 id_parts = cell(numel(runs), 1);
 for run_idx = 1:numel(runs)
-    if balance_runs
-        % Deterministic uniform resampling gives every run equal total weight.
-        idx = round(linspace(1, counts(run_idx), requested_count));
+    if ~isempty(max_samples_per_run) && counts(run_idx) > max_samples_per_run
+        % Uniformly cap long runs without duplicating samples from short runs.
+        idx = unique(round(linspace(1,counts(run_idx), ...
+            max_samples_per_run)));
     else
         idx = 1:counts(run_idx);
     end

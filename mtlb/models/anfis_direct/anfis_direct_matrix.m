@@ -1,8 +1,10 @@
-function [A, B, C] = anfis_direct_matrix(X_pred, U_pred, vx)
+function [A, B, C] = anfis_direct_matrix(X_pred, ~, vx, dt)
 % The funciton returns the discrete state matrices for a given state (predicted + vx)
 % x_{k+1} = A x_k + B u_k + C
 % x: [y vy psi r delta delta_dot]
-% u: [st mz]
+% u: steering command
+
+if nargin < 4 || isempty(dt), dt = 0.02; end
 
 % Load ANFIS model
 persistent anfis_direct;
@@ -20,15 +22,17 @@ assert(all(isfinite(mu)), 'mu invalid');
 assert(all(isfinite(sg)), 'sigma invalid');
 assert(all(abs(sg) > 1e-8), 'sigma too small or zero');
 
-% Initialization
-dt = 0.02;
-A = zeros(6);
-B = zeros(6,2);
-C = zeros(6,1);
-y = X_pred(1); vy = X_pred(2); psi = X_pred(3); r = X_pred(4);
+if isfield(anfis_direct,'Ts'), training_dt=anfis_direct.Ts; else, training_dt=0.02; end
+step_scale = dt/training_dt;
 
-% Anfis matrix for the predicted state [vy r vx delta mz]
-X_in = [X_pred(2) X_pred(4) vx X_pred(5) U_pred(2)];
+% Initialization
+A = zeros(6);
+B = zeros(6,1);
+C = zeros(6,1);
+vy = X_pred(2); psi = X_pred(3);
+
+% ANFIS input vector [vy r vx delta]
+X_in = [X_pred(2) X_pred(4) vx X_pred(5)];
 
 % Detect extrapolation and clamp
 mask_low  = X_in < xmin;
@@ -38,7 +42,7 @@ if any(mask_low) || any(mask_high)
 
     fprintf('\n===== ANFIS EXTRAPOLATION DETECTED =====\n');
 
-    labels = {'vy','r','vx','delta','mz'};
+    labels = {'vy','r','vx','delta'};
 
     for j = 1:length(X_in)
         if mask_low(j) || mask_high(j)
@@ -59,19 +63,21 @@ Xin_n = (X_in - mu) ./ sg;
 A(1,1) = 1;
 A(1,2) = cos(psi) * dt;
 A(1,3) = (vx * cos(psi) - vy * sin(psi)) * dt;
-C(1) = dt*(vx*sin(psi)+vy*cos(psi) - A(1,2)*vy - A(1,3)*psi);
+C(1) = dt*(vx*sin(psi)+vy*cos(psi)) - A(1,2)*vy - A(1,3)*psi;
 
 % Vy dynamics
 [A_vy_n, b_vy_n, ~] = evalfis_mat(anfis_direct.vy.mat, Xin_n);
 
 A_vy = (A_vy_n(:) ./ sg');
 b_vy = b_vy_n - sum(A_vy_n(:) .* (mu' ./ sg'));
-
-A(2,2) = A_vy(1); % Effect of vy on next vy
-A(2,4) = A_vy(2); % Effect of r  on next vy
-A(2,5) = A_vy(4); % Effect of delta on next vy
-B(2,2) = A_vy(5); % Effect of mz on next vy
-C(2)   = b_vy + A_vy(3) * vx; % Effect of vx on next vy
+active = ~(mask_low|mask_high);
+A_vy_effective=A_vy.*active(:);
+vy_at_op=b_vy+A_vy'*X_in(:);
+A(2,2)=1-step_scale+step_scale*A_vy_effective(1);
+A(2,4)=step_scale*A_vy_effective(2);
+A(2,5)=step_scale*A_vy_effective(4);
+C(2)=step_scale*(vy_at_op-A_vy_effective(1)*X_pred(2) ...
+    -A_vy_effective(2)*X_pred(4)-A_vy_effective(4)*X_pred(5));
 
 % Psi kinematics
 A(3,4) = dt;
@@ -82,12 +88,13 @@ A(3,3) = 1;
 
 A_r = (A_r_n(:) ./ sg');
 b_r = b_r_n - sum(A_r_n(:) .* (mu' ./ sg'));
-
-A(4,2) = A_r(1); % Effect of vy on next r
-A(4,4) = A_r(2); % Effect of r  on next r
-A(4,5) = A_r(4); % Effect of delta on next r
-B(4,2) = A_r(5); % Effect of mz on next r
-C(4)   = b_r + A_r(3) * vx; % Effect of vx on next r
+A_r_effective=A_r.*active(:);
+r_at_op=b_r+A_r'*X_in(:);
+A(4,2)=step_scale*A_r_effective(1);
+A(4,4)=1-step_scale+step_scale*A_r_effective(2);
+A(4,5)=step_scale*A_r_effective(4);
+C(4)=step_scale*(r_at_op-A_r_effective(1)*X_pred(2) ...
+    -A_r_effective(2)*X_pred(4)-A_r_effective(4)*X_pred(5));
 
 % Steering dynamics (fordward-Euler discretization)
 wn = 16.0;

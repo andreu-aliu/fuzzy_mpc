@@ -138,7 +138,7 @@ x_pred_mat = reshape(row_data, n_cols, n_rows).';
 
 Np = 60;
 nx = 6;
-nu = 2;
+nu = 1;
 dt = 0.02;
 
 % Scales for normalization
@@ -148,7 +148,6 @@ params.scale_psi = 0.05;  % rad
 params.scale_r   = 0.05;   % rad/s
 params.scale_st  = 0.2;   % rad
 params.scale_dst = 0.001;   % rad/0.02s
-params.scale_mz  = 1000;  % Nm
 
 % Weights
 params.q_y  = 200;
@@ -166,16 +165,12 @@ params.p_st = 0;
 params.p_dst= 0;
 
 params.r_st = 1;
-params.r_mz = 0; 
 
 params.rd_st = 2;
-params.rd_mz = 0; 
 
 % Bounds
 params.min_st = -0.38; % 436
 params.max_st = 0.38;
-params.min_mz = -0;
-params.max_mz = 0;
 %% Compute MPC with given matrices
 
 [x_pred, u_opt, x_comp] = mpc(x_0, x_ref, x_prev, u_prev, vx, u_prev, params);

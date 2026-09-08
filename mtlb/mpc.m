@@ -1,22 +1,22 @@
 % This funcion solves the mpc problem
 % Input:
-%    x_0        [4,1]
-%    x_ref      [4*60,1]
-%    x_pred     [4*60,1]
-%    u_pred     [2*60,1]
+%    x_0        [6,1]
+%    x_ref      [6*60,1]
+%    x_pred     [6*60,1]
+%    u_pred     [60,1]
 %    vx         [60,1]
 %    params:    weights and constraints
 % Output:
-%    x_pred     [4*60,1]: Predicted states for the optimal inputs
-%    u_opt      [2*60,1]: Optimal inputs
-%    x_comp     [4*60,1]: Predicted states for the previous (or compare) inputs
+%    x_pred     [6*60,1]: Predicted states for the optimal inputs
+%    u_opt      [60,1]: Optimal steering commands
+%    x_comp     [6*60,1]: Predicted states for the previous inputs
 
 function [x_pred, u_opt, x_comp]= mpc(x_0, x_ref, x_prev, u_prev, vx, u_prev_iter, params)
 
 % Parameters of the MPC
 n_horizon = 60;
 n_states = 6;
-n_inputs = 2;
+n_inputs = 1;
 
 % Discrete model matrices for each step
 Ad = cell(n_horizon,1);
@@ -40,7 +40,6 @@ for i = 1:n_horizon
     % Select model for MPC
     % [Ad{i}, Bd{i}, Cd{i}] = anfis_residuals_matrix(xi, ui, vxi); anfis = false;
     % [Ad{i}, Bd{i}, Cd{i}] = anfis_delta_matrix(xi, ui, vxi); anfis = true;
-    % [Ad{i}, Bd{i}, Cd{i}] = ltv_tv_matrix(xi, ui, vxi); anfis = false;
     [Ad{i}, Bd{i}, Cd{i}] = ltv_matrix(xi, ui, vxi); anfis = false;
 
     % Check inputs and matrixes
@@ -122,16 +121,10 @@ P = diag([
 ]);
 
 % Initialize R matrix
-R = diag([
-    params.r_st/params.scale_st^2
-    params.r_mz/params.scale_mz^2
-]);
+R = params.r_st/params.scale_st^2;
 
 % Initialize Rd matrix
-Rd = diag([
-    params.rd_st/params.scale_dst^2
-    params.rd_mz/params.scale_mz^2
-]);
+Rd = params.rd_st/params.scale_dst^2;
 
 % Create Q_ matrix
 Q_ = blkdiag(kron(eye(n_horizon-1), Q), P);
@@ -197,8 +190,8 @@ end
 lb = zeros(n_horizon*n_inputs, 1);
 ub = zeros(n_horizon*n_inputs, 1);
 for i = 1:n_horizon
-    lb(n_inputs*(i-1)+1:n_inputs*i) = [params.min_st; params.min_mz];
-    ub(n_inputs*(i-1)+1:n_inputs*i) = [params.max_st; params.max_mz];
+    lb(n_inputs*(i-1)+1:n_inputs*i) = params.min_st;
+    ub(n_inputs*(i-1)+1:n_inputs*i) = params.max_st;
 end
 
 % Call quadprog

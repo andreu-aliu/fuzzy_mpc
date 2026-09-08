@@ -1,13 +1,11 @@
 function x_next = anfis_residuals_2(X, U, dt)
 % X: [y vy psi r delta delta_dot]
-% U: [vx st Mtv]
+% U: [vx steering_command]
 
-C = num2cell(U);
-[vx, st, mz] = deal(C{:});
+validateattributes(U,{'numeric'},{'vector','numel',2,'finite'});
+vx=U(1); st=U(2);
 
-U_pred = [st; mz];
-[A, B, Cc] = anfis_residuals_matrix(X, U_pred, vx);
+[A,B,Cc] = anfis_residuals_matrix(X,st,vx,dt);
 
-x_next = A * X + B * U_pred + Cc;
+x_next = A*X(:) + B*st + Cc;
 end
-

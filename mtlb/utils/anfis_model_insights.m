@@ -17,8 +17,8 @@ catch
 end
 
 if isempty(inputLabels)
-    if nIn == 5
-        inputLabels = {'vy','r','vx','delta','mz'};
+    if nIn == 4
+        inputLabels = {'vy','r','vx','delta'};
     else
         inputLabels = arrayfun(@(k) sprintf('in%d', k), 1:nIn, 'UniformOutput', false);
     end
@@ -54,4 +54,3 @@ legend('Training Error', 'Validation Error')
 
 fprintf('Model trained to %f factor of RMSE\n', trainError(end)/trainError(1))
 end
-

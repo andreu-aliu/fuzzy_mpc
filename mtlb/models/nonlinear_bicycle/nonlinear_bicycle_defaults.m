@@ -4,7 +4,7 @@ function params = nonlinear_bicycle_defaults()
 params.model = "nonlinear bicycle";
 
 % Vehicle properties
-params.m = 220.0;       % Mass [kg]
+params.m = 215.0;       % Mass [kg]
 params.Iz = 188.0;      % Yaw inertia [kg m^2]
 params.lf = 0.765;      % CoG to front axle [m]
 params.lr = 0.765;      % CoG to rear axle [m]

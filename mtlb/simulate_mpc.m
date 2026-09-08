@@ -1,5 +1,5 @@
 cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'))
-clear all;
+clear;
 %% Setup
 dataFile = "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG";
 
@@ -18,7 +18,6 @@ meas.t = data.time(idx_start:idx_end);
 in.t = data.time(idx_start:idx_end);
 
 in.st = data.st(idx_start:idx_end);
-in.mz = data.mz(idx_start:idx_end);
 in.vx = data.vx(idx_start:idx_end);
 
 meas.x = data.x(idx_start:idx_end);
@@ -44,7 +43,7 @@ title('Trajectory map');
 legend('Full run','Selected window');
 
 % --- Right: nested stacked time series ---
-rightLayout = tiledlayout(mainLayout,5,1,'TileSpacing','compact','Padding','compact');
+rightLayout = tiledlayout(mainLayout,4,1,'TileSpacing','compact','Padding','compact');
 rightLayout.Layout.Tile = 2; 
 
 % Longitudinal velocity
@@ -79,16 +78,8 @@ ylabel('\delta [rad]');
 title('Steering');
 xlabel('Time [s]');
 
-% TV moment
-ax5 = nexttile(rightLayout); hold on;
-plot(data.time, data.mz, 'w');
-plot(meas.t, in.mz, 'b','LineWidth',1.2);
-ylabel('M_z [Nm]');
-title('Yaw moment');
-xlabel('Time [s]');
-
 % Link time axes
-linkaxes([ax1 ax2 ax3 ax4 ax5],'x');
+linkaxes([ax1 ax2 ax3 ax4],'x');
 grid on
 
 %% BUILD TRAJECTORY 
@@ -126,7 +117,7 @@ traj.r   = r_u;
 
 Np = 60;
 nx = 6;
-nu = 2;
+nu = 1;
 dt = 0.02;
 
 % Scales for normalization
@@ -136,7 +127,6 @@ params.scale_psi = 0.05;  % rad
 params.scale_r   = 0.05;   % rad/s
 params.scale_st  = 0.2;   % rad
 params.scale_dst = 0.001;   % rad/0.02s
-params.scale_mz  = 1000;  % Nm
 
 % Weights
 params.q_y  = 200;
@@ -154,16 +144,12 @@ params.p_st = 0;
 params.p_dst= 0;
 
 params.r_st = 1;
-params.r_mz = 0; 
 
 params.rd_st = 2;
-params.rd_mz = 0; 
 
 % Bounds
 params.min_st = -0.38; % 436
 params.max_st = 0.38;
-params.min_mz = -0;
-params.max_mz = 0;
 
 % Debug options
 debug_opts.enabled = false;
@@ -194,11 +180,11 @@ X{1} = [meas.x(1);
         0;
         0];
 
-U{1} = [in.st(1); in.mz(1)];
+U{1} = in.st(1);
 
 % Warm start
 x_pred = repmat([0 meas.vy(1) 0 meas.r(1) 0 0], Np, 1); % local state
-u_pred = zeros(Np, 2);
+u_pred = zeros(Np,1);
 
 for k = 1:n-1
 
@@ -229,7 +215,7 @@ for k = 1:n-1
 
     % Apply first control
     u = u_pred(1,:)';
-    % u = [in.st(k);in.mz(k)]; % Test with measured inputs
+    % u = in.st(k); % Test with measured steering
 
     U{k+1} = u;
 
@@ -246,7 +232,7 @@ for k = 1:n-1
         
         % Convert to local
         x_comp = NaN(Np,6);
-        u_comp = NaN(Np,2);
+        u_comp = NaN(Np,1);
         vx_comp = NaN(Np,1);
         % x_0_comp = global_to_local_state(X_compare{1}, X_compare{1});
         % for i = 1:Np
@@ -271,14 +257,14 @@ for k = 1:n-1
         x_pred_comp = reshape(x_pred_comp_vec, nx, []).';
 
         % Norm difference
-        err = reshape(x_pred_comp_vec - x_comp_vec, 4, []);
+        err = reshape(x_pred_comp_vec-x_comp_vec,nx,[]);
 
         err(1,:) = err(1,:) / params.scale_y;
         err(2,:) = err(2,:) / params.scale_vy;
         err(3,:) = err(3,:) / params.scale_psi;
         err(4,:) = err(4,:) / params.scale_r;
         
-        model_error(k) = mean(vecnorm(err,2,1));
+        model_error(k) = mean(vecnorm(err(1:4,:),2,1));
         fprintf("Model error: %.6f\n", model_error(k));
 
         % Comparation plots
@@ -299,7 +285,6 @@ y_sim = Xg_mat(:,2);
 delta_sim = Xg_mat(:,7);
 
 st_sim = U_mat(:,1);
-mz_sim = U_mat(:,2);
 
 %t_u = meas.t(1:size(U_mat,1));
 t_u = 0:dt:dt*(size(U_mat,1)-1);
@@ -327,18 +312,13 @@ set(gca, 'Color', 'k');   % black background
 % ===== MIDDLE: CONTROLS =====
 ax2 = nexttile; hold on; grid on;
 
-yyaxis left
 plot(t_u, st_sim, 'LineWidth', 1.5);
 plot(t_u, delta_sim, 'LineWidth', 1.5);
 ylabel('\delta [rad]');
 
-yyaxis right
-plot(t_u, mz_sim, 'LineWidth', 1.5);
-ylabel('M_z [Nm]');
-
 xlabel('Time [s]');
 title('Control Inputs');
-legend('Steering command','Actual steering','Yaw moment','Location','best');
+legend('Steering command','Actual steering','Location','best');
 
 % ===== BOTTOM: MODEL ERROR =====
 ax3 = nexttile; hold on; grid on;
@@ -455,4 +435,3 @@ function [x_local, vx] = global_to_local_state(X_global, X_ref)
     x_local(6) = delta_dot;
 
 end
-

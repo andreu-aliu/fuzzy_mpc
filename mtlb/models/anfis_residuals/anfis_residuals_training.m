@@ -1,8 +1,8 @@
-% Train ANFIS model to predict the one-step state residual of the LTV-TV model
-% inputs: [vy r vx delta mz] normalized
-% outputs: [e_vy e_r] where e = x_meas_{k+1} - x_ltv_tv_{k+1}
+% Train ANFIS model to predict the one-step state residual of the LTV model
+% inputs: [vy r vx delta] normalized
+% outputs: [e_vy e_r] where e = x_meas_{k+1} - x_ltv_{k+1}
 cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'))
-clear all
+clear
 
 keep_factor = 5;
 validation_fraction = 0.2;
@@ -34,7 +34,6 @@ for i = 1:numel(datasets)
     data.vy    = sgolayfilt_custom(data.vy, 3, 21);
     data.r     = sgolayfilt_custom(data.r,  3, 21);
     data.delta = sgolayfilt_custom(data.delta, 3, 21);
-    data.mz    = sgolayfilt_custom(data.mz, 3, 21);
     data.vx    = sgolayfilt_custom(data.vx, 3, 21);
 
     [y_local, psi_local] = localFrameFromXY(data.x, data.y, data.r, data.time);
@@ -43,16 +42,16 @@ for i = 1:numel(datasets)
     idx = ini:keep_factor:(fin-1);
     for k = idx(:)'
         xk = [y_local(k); data.vy(k); psi_local(k); data.r(k); data.delta(k); delta_dot(k)];
-        uk = [data.vx(k), data.st(k), data.mz(k)];
+        uk = [data.vx(k),data.st(k)];
         
-        % Prediction by ltv_tv model
-        x_pred = ltv_tv(xk, uk, Ts);
+        % Prediction by steering-only LTV model
+        x_pred = ltv(xk,uk,Ts);
         x_meas_next = [y_local(k+1); data.vy(k+1); psi_local(k+1); data.r(k+1); data.delta(k+1); delta_dot(k+1)];
 
         e = x_meas_next - x_pred;
         e(3) = wrapAngle(e(3));
 
-        Xin = [xk(2) xk(4) uk(1) xk(5) uk(3)]; % [vy r vx delta mz]
+        Xin = [xk(2) xk(4) uk(1) xk(5)]; % [vy r vx delta]
         X = [X; Xin]; %#ok<AGROW>
         Y = [Y; e(2) e(4)]; %#ok<AGROW>
     end
@@ -66,6 +65,7 @@ anfis_residuals.norm.mu = mu;
 anfis_residuals.norm.sigma = sigma;
 anfis_residuals.norm.x_min = min(X, [], 1);
 anfis_residuals.norm.x_max = max(X, [], 1);
+anfis_residuals.Ts = Ts;
 
 anfis_residuals.vy.min = min(Y(:,1));
 anfis_residuals.vy.max = max(Y(:,1));
@@ -98,7 +98,7 @@ opt = genfisOptions("SubtractiveClustering");
     % SubtractiveClustering: 
     opt.ClusterInfluenceRange = 0.35; %0.5
 
-anfis_residuals.vy.init_fis = genfis(Xn_train, Y_train(:,2), opt);
+anfis_residuals.vy.init_fis = genfis(Xn_train,Y_train(:,1),opt);
 
 % Training options
 opt = anfisOptions;
@@ -115,7 +115,10 @@ opt.DisplayStepSize    = true;
 opt.DisplayANFISInformation = true;
 opt.DisplayFinalResults = true;
 
-[anfis_residuals.vy.fis, trainError, ~, ~, valError] = anfis([Xn_train Y_train(:,1)], opt); %#ok<ASGLU>
+[vy_final_fis,trainError,~,vy_validation_fis,valError] = ...
+    anfis([Xn_train Y_train(:,1)],opt);
+anfis_residuals.vy.fis=vy_validation_fis;
+anfis_residuals.vy.final_epoch_fis=vy_final_fis;
 save('models/anfis_residuals/anfis_residuals.mat', 'anfis_residuals')
 
 %% e_r model
@@ -133,7 +136,7 @@ anfis_residuals.r.init_fis = genfis(Xn_train, Y_train(:,2), opt);
 % Training options
 opt = anfisOptions;
 opt.InitialFIS = anfis_residuals.r.init_fis;
-opt.ValidationData = [Xn_val Y_val(:,1)];
+opt.ValidationData = [Xn_val Y_val(:,2)];
 
 opt.EpochNumber = 200;
 opt.InitialStepSize = 0.15; %0.01
@@ -145,7 +148,10 @@ opt.DisplayStepSize    = true;
 opt.DisplayANFISInformation = true;
 opt.DisplayFinalResults = true;
 
-[anfis_residuals.r.fis, trainError, ~, ~, valError] = anfis([Xn_train Y_train(:,2)], opt); %#ok<ASGLU>
+[r_final_fis,trainError,~,r_validation_fis,valError] = ...
+    anfis([Xn_train Y_train(:,2)],opt);
+anfis_residuals.r.fis=r_validation_fis;
+anfis_residuals.r.final_epoch_fis=r_final_fis;
 
 % Save model
 save('models/anfis_residuals/anfis_residuals.mat', 'anfis_residuals')
@@ -169,7 +175,7 @@ save('models/anfis_residuals/anfis_residuals.mat', 'anfis_residuals')
 % Model to evaluate
 fis = anfis_residuals.r.fis;
 anfis_model_insights(fis, Xn, trainError, valError, ...
-    'inputLabels', {'vy','r','vx','delta','mz'}, ...
+    'inputLabels', {'vy','r','vx','delta'}, ...
     'titlePrefix', 'anfis\_delta.r', ...
     'figBase', 0);
 

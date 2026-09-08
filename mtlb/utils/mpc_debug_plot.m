@@ -30,11 +30,11 @@ function mpc_debug_plot(k, x0, x_ref, x_pred, u_pred, params, opts)
     if isempty(initialized) || ~isgraphics(hFig) || ~isgraphics(hLines.y_ref)
 
         hFig = figure(fig_id); clf;
-        tl = tiledlayout(3,2,'TileSpacing','compact','Padding','compact');
+        tl = tiledlayout(5,1,'TileSpacing','compact','Padding','compact');
 
         % Create axes
-        hAx = gobjects(6,1);
-        for i = 1:6
+        hAx = gobjects(5,1);
+        for i = 1:5
             hAx(i) = nexttile(tl);
             hold(hAx(i),'on'); grid(hAx(i),'on');
         end
@@ -62,15 +62,10 @@ function mpc_debug_plot(k, x0, x_ref, x_pred, u_pred, params, opts)
 
         hLines.st = plot(hAx(5), t_pred, u_pred(:,1),'b--','LineWidth',1.5);
         hLines.delta_ref  = plot(hAx(5), t_pred, x_ref(:,5),'w--','LineWidth',1.5);
-        hLines.delta_pred = plot(hAx(5), t_pred, x_pred(:,5), 'b', 'LineWidth', 1.5)
+        hLines.delta_pred = plot(hAx(5),t_pred,x_pred(:,5),'b','LineWidth',1.5);
         yline(hAx(5), params.min_st,'r--');
         yline(hAx(5), params.max_st,'r--');
         title(hAx(5),'\delta');
-
-        hLines.mz = plot(hAx(6), t_pred, u_pred(:,2),'LineWidth',1.5);
-        yline(hAx(6), params.min_mz,'r--');
-        yline(hAx(6), params.max_mz,'r--');
-        title(hAx(6),'M_z');
 
         sgtitle(sprintf('MPC Debug (k = %d)',k));
 
@@ -98,8 +93,6 @@ function mpc_debug_plot(k, x0, x_ref, x_pred, u_pred, params, opts)
         set(hLines.st, 'YData', u_pred(:,1));
         set(hLines.delta_ref,  'YData', x_ref(:,5));
         set(hLines.delta_pred, 'YData', x_pred(:,5))
-
-        set(hLines.mz, 'YData', u_pred(:,2));
 
         sgtitle(sprintf('MPC Debug (k = %d)',k));
     end

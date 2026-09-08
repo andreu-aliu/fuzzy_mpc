@@ -1,7 +1,7 @@
 function x_next = sim_anfis_delta(X, U, vx_next, dt)
 % Using ANFIS dleta models
 % X = [x, y, psi, vx, vy, r, delta, delta_dot]
-% U = [delta_cmd, M_TV]
+% U = steering command
 % dt: timestep [s]
 
 % State and inputs
@@ -13,7 +13,6 @@ delta = X(7);
 vel_delta = X(8);
 delta = min(max(delta, -0.45), 0.45);
 delta_cmd = U(1);
-mz = U(2);
 
 % Load models
 persistent anfis_delta;
@@ -23,7 +22,7 @@ if(isempty(anfis_delta))
 end
 
 % Build ANFIS input vector and clamp to trained inputs
-Xin = [vy r vx delta mz];
+Xin = [vy r vx delta];
 mask_low  = Xin < anfis_delta.norm.x_min;
 mask_high = Xin > anfis_delta.norm.x_max;
 if any(mask_low) || any(mask_high)

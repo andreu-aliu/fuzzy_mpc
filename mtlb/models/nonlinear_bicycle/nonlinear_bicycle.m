@@ -1,7 +1,7 @@
 function x_next = nonlinear_bicycle(X, U, dt)
 %NONLINEAR_BICYCLE One-step nonlinear lateral vehicle prediction.
 % X: [y; vy; psi; r; delta; delta_dot]
-% U: [vx, steering_command, Mz]
+% U: [vx, steering_command]
 
 persistent params
 
@@ -18,7 +18,7 @@ if isempty(params)
 end
 
 validateattributes(X, {'numeric'}, {'vector', 'numel', 6, 'finite'});
-validateattributes(U, {'numeric'}, {'vector', 'numel', 3, 'finite'});
+validateattributes(U, {'numeric'}, {'vector', 'numel', 2, 'finite'});
 validateattributes(dt, {'numeric'}, {'scalar', 'real', 'finite', 'positive'});
 
 x = X(:);
@@ -34,7 +34,6 @@ delta_dot = x(6);
 vx = u(1);
 steering_command = min(max(u(2), -params.max_steering), ...
                        params.max_steering);
-mz = u(3);
 vx_slip = max(abs(vx), params.min_vx);
 
 % Exact nonlinear bicycle slip angles
@@ -51,7 +50,7 @@ fyr = params.tire_Dr * sin(params.tire_Cr * ...
 y_dot = vx * sin(psi) + vy * cos(psi);
 vy_dot = (fyf * cos(delta) + fyr) / params.m - vx * r;
 psi_dot = r;
-r_dot = (params.lf * fyf * cos(delta) - params.lr * fyr + mz) / ...
+r_dot = (params.lf * fyf * cos(delta) - params.lr * fyr) / ...
         params.Iz;
 
 % Second-order steering actuator

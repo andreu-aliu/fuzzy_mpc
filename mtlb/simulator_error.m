@@ -1,5 +1,5 @@
 % Simulate with same inputs the and compare with MPC model
-clear all
+clear
 Np = 60;
 dt = 0.02;
 
@@ -11,7 +11,6 @@ params.scale_psi = 0.05;  % rad
 params.scale_r   = 0.5;   % rad/s
 params.scale_st  = 0.2;   % rad
 params.scale_dst = 1.0;   % rad/s
-params.scale_mz  = 1000;  % Nm
 
 % Weights
 params.q_y  = 100;
@@ -29,16 +28,12 @@ params.p_st = 0;
 params.p_dst= 0;
 
 params.r_st = 10;
-params.r_mz = 0; 
 
 params.rd_st = 2;
-params.rd_mz = 0; 
 
 % Bounds
 params.min_st = -0.436;
 params.max_st = 0.436;
-params.min_mz = -0;
-params.max_mz = 0;
 %%
 % Generate first global state [x, y, psi, vx, vy, r, delta, delta_dot]
 vx = 020;
@@ -46,9 +41,8 @@ X_0 = [10 10 0.01 vx 0 0 0 0];
 
 % Generate inputs as sinusoidal signals
 t = (1:60) * dt;
-u_mz = sin(t*2*pi)* 100;
 u_st = sin(t*2*pi)* 0.4;
-U = mat2cell([u_st' u_mz'], ones(Np,1), 2);
+U = num2cell(u_st(:));
 
 % Iterate over states
 X_sim = cell(Np,1); X_mat = cell(Np,1);
@@ -60,9 +54,10 @@ for i = 1:Np
     X_sim{i+1} = sim_anfis_delta(X_sim{i}, U{i}, vx, dt);
 
     % Model matrices
-    [Ad{i}, Bd{i}, Cd{i}] = anfis_delta_matrix(X_mat{i}, U{i}', X_sim{i}(4), dt);
+    [Ad{i},Bd{i},Cd{i}] = anfis_delta_matrix( ...
+        X_mat{i},U{i},X_sim{i}(4),dt);
     % Output from matrices
-    X_mat{i+1} = (Ad{i} * X_mat{i}' + Bd{i} * U{i}' + Cd{i})';
+    X_mat{i+1} = (Ad{i}*X_mat{i}' + Bd{i}*U{i} + Cd{i})';
 end
 
 % Extract matrices
@@ -81,7 +76,8 @@ from_mat = cell2mat(X_mat);
     x_comp_vec  = reshape(x_comp.', [], 1);
     u_comp_vec  = reshape(u_comp.', [], 1);
 
-    [~,~,x_pred_comp_vec] = mpc(x_0_comp, x_comp_vec, x_comp_vec, u_comp_vec, vx_comp, zeros(2*Np,1), params);
+    [~,~,x_pred_comp_vec] = mpc(x_0_comp,x_comp_vec,x_comp_vec, ...
+        u_comp_vec,vx_comp,0,params);
 
     x_pred_comp = reshape([x_0_comp ;x_pred_comp_vec], 6, []).';
 

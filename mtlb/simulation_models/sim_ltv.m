@@ -2,7 +2,7 @@ function x_next = sim_ltv(X, U, vx_next, dt)
 % LTV-based simulator consistent with MPC model
 %
 % X = [x, y, psi, vx, vy, r, delta, delta_dot]
-% U = [delta, M_TV]
+% U = steering command
 
     % Extract states
     x   = X(1);
@@ -17,20 +17,18 @@ function x_next = sim_ltv(X, U, vx_next, dt)
     % Inputs
     U = U(:);
     delta_cmd = U(1);
-    mz    = U(2);
 
     % Build local state
     x_local = [y; vy; psi; r; delta; delta_dot];
     x_local = x_local(:);
 
     % Get discrete LTV model at this operating point
-    [Ad, Bd, Cd] = ltv_matrix(x_local, U, vx);
+    [Ad,Bd,Cd] = ltv_matrix(x_local,delta_cmd,vx,dt);
 
     % Propagate local dynamics
-    x_local_next = Ad * x_local + Bd * U + Cd;
+    x_local_next = Ad*x_local + Bd*delta_cmd + Cd;
 
     % Extract updated states
-    y_next   = x_local_next(1);
     vy_next  = x_local_next(2);
     psi_next = x_local_next(3);
     r_next   = x_local_next(4);

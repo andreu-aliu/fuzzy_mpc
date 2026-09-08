@@ -28,7 +28,7 @@ Ts = loaded.meta.Ts;
 
 %% Build a balanced identification dataset
 
-samples = struct('vy', [], 'r', [], 'vx', [], 'delta', [], 'mz', [], ...
+samples = struct('vy', [], 'r', [], 'vx', [], 'delta', [], ...
                  'vy_next', [], 'r_next', [], 'weight', []);
 
 for run_idx = 1:numel(datasets)
@@ -54,13 +54,12 @@ for run_idx = 1:numel(datasets)
     r = sgolayfilt_custom(data.r, filter_order, filter_window);
     vx = sgolayfilt_custom(data.vx, filter_order, filter_window);
     delta = sgolayfilt_custom(data.delta, filter_order, filter_window);
-    mz = sgolayfilt_custom(data.mz, filter_order, filter_window);
 
     idx = (ini:keep_factor:(fin - 1))';
     valid = isfinite(vy(idx)) & isfinite(vy(idx + 1)) & ...
             isfinite(r(idx)) & isfinite(r(idx + 1)) & ...
             isfinite(vx(idx)) & isfinite(delta(idx)) & ...
-            isfinite(mz(idx)) & abs(vx(idx)) >= min_vx;
+            abs(vx(idx)) >= min_vx;
     idx = idx(valid);
 
     if numel(idx) > max_samples_per_run
@@ -81,7 +80,6 @@ for run_idx = 1:numel(datasets)
     samples.r = [samples.r; r(idx)]; %#ok<AGROW>
     samples.vx = [samples.vx; vx(idx)]; %#ok<AGROW>
     samples.delta = [samples.delta; delta(idx)]; %#ok<AGROW>
-    samples.mz = [samples.mz; mz(idx)]; %#ok<AGROW>
     samples.vy_next = [samples.vy_next; vy(idx + 1)]; %#ok<AGROW>
     samples.r_next = [samples.r_next; r(idx + 1)]; %#ok<AGROW>
     samples.weight = [samples.weight; ...
@@ -226,8 +224,7 @@ fyr = Dr .* sin(p.tire_Cr .* atan(Br .* alpha_r));
 
 vy_dot = (fyf .* cos(samples.delta) + fyr) ./ p.m - ...
          samples.vx .* samples.r;
-r_dot = (p.lf .* fyf .* cos(samples.delta) - p.lr .* fyr + ...
-         samples.mz) ./ p.Iz;
+r_dot = (p.lf .* fyf .* cos(samples.delta) - p.lr .* fyr) ./ p.Iz;
 
 vy_next = samples.vy + dt .* vy_dot;
 r_next = samples.r + dt .* r_dot;

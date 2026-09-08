@@ -1,6 +1,6 @@
 % Returns the row vectors of the discrete model Δx = A x + b evaluated at input
 % And output at the input
-% Input is: [vy r vx st mz]
+% Input ordering is defined by the extracted FIS model.
 function [A, b, y] = evalfis_mat(fis, input)
     w = zeros(fis.n_r,1); f = zeros(fis.n_r,1);
 

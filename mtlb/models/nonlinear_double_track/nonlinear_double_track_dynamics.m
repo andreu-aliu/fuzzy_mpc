@@ -1,5 +1,5 @@
 function [vy_dot, r_dot, forces] = nonlinear_double_track_dynamics( ...
-    vy, r, vx, delta, mz, p)
+    vy, r, vx, delta, p)
 %NONLINEAR_DOUBLE_TRACK_DYNAMICS Vectorized four-wheel lateral dynamics.
 % Inputs may be scalars or equally sized column vectors.
 
@@ -39,6 +39,14 @@ for iteration = 1:p.load_transfer_iterations
     rear_load_difference = 2.0 .* p.m .* ay .* p.cg_height .* ...
                            rear_fraction ./ p.track_rear;
 
+    % Preserve each axle's total normal load when a wheel approaches lift.
+    front_limit = fz_front_axle - 2.0*p.min_normal_load;
+    rear_limit = fz_rear_axle - 2.0*p.min_normal_load;
+    front_load_difference = min(max(front_load_difference,-front_limit), ...
+                                front_limit);
+    rear_load_difference = min(max(rear_load_difference,-rear_limit), ...
+                               rear_limit);
+
     fz_fl = max(0.5 * (fz_front_axle - front_load_difference), ...
                 p.min_normal_load);
     fz_fr = max(0.5 * (fz_front_axle + front_load_difference), ...
@@ -68,8 +76,11 @@ for iteration = 1:p.load_transfer_iterations
 end
 
 vy_dot = ay - vx .* r;
-r_dot = (p.lf .* front_body_force - p.lr .* rear_body_force + mz) ./ ...
-        p.Iz;
+% The unequal front tyre forces also create a track-width moment because
+% steering rotates part of each lateral tyre force into the body x-axis.
+front_track_moment = 0.5*p.track_front .* (fy_fl-fy_fr) .* sin(delta);
+r_dot = (p.lf.*front_body_force - p.lr.*rear_body_force + ...
+         front_track_moment) ./ p.Iz;
 
 if nargout > 2
     forces.alpha_fl = alpha_fl;
@@ -84,6 +95,7 @@ if nargout > 2
     forces.fy_fr = fy_fr;
     forces.fy_rl = fy_rl;
     forces.fy_rr = fy_rr;
+    forces.front_track_moment = front_track_moment;
 end
 end
 

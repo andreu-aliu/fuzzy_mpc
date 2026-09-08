@@ -1,8 +1,8 @@
 cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'))
-clear all;
+clear;
 %% Setup
 Ts = 0.02;
-dataset_file = fullfile("data", "datasets_evaluation_simu.mat");
+dataset_file = fullfile("data", "datasets_evaluation.mat");
 
 % Models to compare
 models = {
@@ -14,7 +14,6 @@ models = {
     % @anfis_residuals, 'ANFIS residuals';
     % @anfis_residuals_2, 'ANFIS residuals matrix';
     @ltv, 'LTV MPC';
-    @ltv_tv, 'LTV MPC with TV';
 };
 
 % One-step evaluation: evaluate next-state prediction.
@@ -75,7 +74,6 @@ for i = 1:numel(datasets)
     run.r = data.r(idx);
     run.delta = data.delta(idx);
     run.st = data.st(idx);
-    run.mz = data.mz(idx);
 
     % Local frame (y,psi) for optional propagation plots / completeness
     [run.y_local, run.psi_local] = localFrameFromXY(run.x, run.y, run.r, run.t);
@@ -144,7 +142,7 @@ for m = 1:size(models,1)
         Xk(6,:) = run.delta_dot(1:end-1);
 
         % Measured inputs
-        Uk = [vx(1:end-1), run.st(1:end-1), run.mz(1:end-1)];
+        Uk = [vx(1:end-1),run.st(1:end-1)];
 
         y_next = run.y_local(2:end);
         vy_next = run.vy(2:end);
@@ -441,7 +439,6 @@ meas.t = run.t(idx_start:idx_end);
 in.t = run.t(idx_start:idx_end);
 
 in.st = run.st(idx_start:idx_end);
-in.mz = run.mz(idx_start:idx_end);
 in.vx = run.vx(idx_start:idx_end);
 
 meas.x = run.x(idx_start:idx_end);
@@ -532,7 +529,7 @@ function states = simulateModel(modelFcn, inputs, init_state)
     
     for k = 1:N
         % Get input
-        u = [inputs.vx(k), inputs.st(k), inputs.mz(k)];
+        u = [inputs.vx(k),inputs.st(k)];
     
         % Log state
         states(k).y         = x(1);
