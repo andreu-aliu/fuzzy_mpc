@@ -19,6 +19,7 @@ executes, not only the intended model architecture.
 | `anfis_direct` | Data-driven, local affine | Learns next lateral velocity and yaw rate directly | Comparison candidate and MPC-ready |
 | `anfis_dot` | Data-driven, local affine | Learns lateral-velocity and yaw-rate derivatives | Comparison candidate and MPC-ready |
 | `anfis_residuals` | Hybrid physics/data-driven | Learns the one-step error of `ltv` | Comparison candidate and MPC-ready |
+| `EEFIGLearning` / `TSGranule` | Data-driven, evolving TS fuzzy | Online ellipsoidal granules with local linear consequents | Implemented learning core; vehicle wrapper pending |
 
 `anfis_residuals` and `anfis_residuals_2` use the same trained residual model.
 The first evaluates the nonlinear ANFIS output directly; the second uses its
@@ -564,6 +565,168 @@ Its trainer uses the same independent real training/evaluation run split and
 balanced preprocessing as the other ANFIS models. Residual targets are always
 generated with the current steering-only `ltv` implementation, so changing the
 LTV equations requires retraining this model.
+
+## Evolving ellipsoidal TS model (`EEFIGLearning`, `TSGranule`)
+
+The implementation follows the TS-EEFIG algorithm in [Alcala et al., 2022](https://doi.org/10.1016/j.asoc.2022.109698).
+It learns local linear state-space consequents while allowing ellipsoidal
+antecedent granules to evolve online. The two classes remain separated by role:
+`TSGranule` owns one local rule and `EEFIGLearning` owns the granule set,
+anomaly logic, auxiliary granule, and consequent-estimation policy.
+
+For state $x_k\in\mathbb R^{n_x}$ and input
+$u_k\in\mathbb R^{n_u}$, the premise/regression vector is
+
+$$
+\zeta_k=\begin{bmatrix}x_k^{\mathsf T}&u_k^{\mathsf T}\end{bmatrix}^{\mathsf T}.
+$$
+
+Rule $i$ has the consequent
+
+$$
+x_{k+1}^i=A_k^i x_k+B_k^i u_k,
+$$
+
+and the blended prediction is
+
+$$
+x_{k+1}=\sum_{i=1}^{N_G}g_k^i(\zeta_k)x_{k+1}^i,
+\qquad
+g_k^i=\frac{\xi_k^i}{\sum_q\xi_k^q}.
+$$
+
+The raw ellipsoidal membership is
+
+$$
+\xi_k^i(\zeta_k)=\exp\!\left(
+-2\sqrt{\sum_j\left(
+\frac{\zeta_{k,j}-\nu_{k,j}^i}
+{\overline\zeta_{k,j}^i-\underline\zeta_{k,j}^i}
+\right)^2}\right).
+$$
+
+A sample is admitted to granule $i$ when
+
+$$
+M_k^i=(\zeta_k-\nu_k^i)^{\mathsf T}
+(\Omega_k^i)^{-1}(\zeta_k-\nu_k^i)\leq\epsilon,
+$$
+
+where $\epsilon$ is an inverse chi-square threshold. For an admitted sample,
+the centre is tentatively updated using the accumulated-membership recursive
+mean realization of equation (15),
+
+$$
+\nu_k^i=\nu_{k-1}^i+
+\frac{g_{k-1}^i(\zeta_k)}{\alpha_{k-1}^i}
+(\zeta_k-\nu_{k-1}^i).
+$$
+
+Here $\alpha_{k-1}^i$ is the accumulated membership evidence. This
+denominator is required by the recursive EEFIG realization: without it, a
+model containing one granule has $g=1$ and its centre would jump exactly to
+every new sample.
+
+The implementation stores the complete conditional dispersion matrices
+$S_{k,j,l}^i$ and $T_{k,j,l}^i$, together with their lower/upper partition
+counts. Their recursive updates implement equations (16)-(17):
+
+$$
+S_{k,j,l}^i=
+\frac{(s_{k,j}-1)S_{k-1,j,l}^i+\nu_{k,l}^i-\zeta_{k,l}}
+{s_{k,j}},
+$$
+
+$$
+T_{k,j,l}^i=
+\frac{(t_{k,j}-1)T_{k-1,j,l}^i+\zeta_{k,l}-\nu_{k,l}^i}
+{t_{k,j}}.
+$$
+
+For the single bound vector used by the membership function, the code takes
+the largest positive conditional spread in each dimension and applies
+
+$$
+\underline\zeta_k^i=
+\max(\nu_k^i-\lambda S_k^i,\beta_S)
++\iota\left[\nu_k^i-
+\max(\nu_k^i-\lambda S_k^i,\beta_S)\right],
+$$
+
+$$
+\overline\zeta_k^i=
+\min(\nu_k^i+\lambda T_k^i,\beta_T)
+-\iota\left[
+\min(\nu_k^i+\lambda T_k^i,\beta_T)-\nu_k^i\right].
+$$
+
+This per-dimension candidate selection is the only deliberate approximation
+in the antecedent update: the complete iterative bound optimizer is delegated
+by the MPC paper to its reference [39] and is not specified there. The code
+does retain all cross-dimensional $S/T$ statistics and performs the stated PJG
+accept-or-rollback test
+
+$$
+\mathcal I(G_k^i,\zeta_k)=M_k^i
+\sum_{\zeta_j\in E_j^i}g_j^i(\zeta_j).
+$$
+
+The accumulated coverage term is corrected to first order for changes in the
+lower bound, centre, and upper bound before the candidate index is evaluated.
+This is essential because every changed granule also changes the normalization
+of all memberships. The accepted index contributions are accumulated per
+granule; a candidate with invalid coverage or a lower accumulated index is
+rolled back atomically, including its centre, covariance, bounds, counts, and
+membership moments.
+
+The inverse covariance is updated with the rank-one recursion of equation
+(18), using the accumulated first and second membership moments to construct
+$\Gamma_k^i$ and $\Lambda_k^i$. Matrices are symmetrized and their eigenvalues
+are floored only as a numerical safeguard. If the scalar recursion becomes
+undefined for a degenerate initial configuration, the previous covariance is
+retained rather than propagating non-finite values.
+
+The auxiliary granule $G_k^{\mathrm{aux}}$ is the sample mean and covariance
+of the current $\phi$-sample premise window. A new granule is created only
+after more than $\bar n_a$ consecutive anomalies and, by default, when it is
+$c$-separated from every existing granule:
+
+$$
+\lVert\nu_k^{\mathrm{aux}}-\nu_k^i\rVert
+\ge c\sqrt{n_\zeta\max\left(
+\lambda_{\max}(\Omega_k^{\mathrm{aux}}),
+\lambda_{\max}(\Omega_k^i)\right)}.
+$$
+
+Offline training estimates the active consequent at every sample by windowed
+least squares over the latest $\phi$ transitions. Online training uses the
+paper's shared inverse-autocorrelation matrix $P_k$ and RLS update
+
+$$
+\Upsilon_k=\frac{P_k\zeta_k}
+{\eta+\zeta_k^{\mathsf T}P_k\zeta_k},
+\qquad
+P_{k+1}=\eta^{-1}(I-\Upsilon_k\zeta_k^{\mathsf T})P_k,
+$$
+
+$$
+\Theta_k^i=\Theta_{k-1}^i+
+(x_{k+1}-\Theta_{k-1}^i\zeta_k)\Upsilon_k^{\mathsf T},
+\qquad \Theta_k^i=\begin{bmatrix}A_k^i&B_k^i\end{bmatrix}.
+$$
+
+Granule creation/windowed LS and ordinary RLS are mutually exclusive during
+one update. Defaults matching the paper's case study are
+$\bar n_a=5$, $\eta=0.99$, $P_0=10^5I$, $\lambda=3$, and $\iota=0.3$.
+Because this project uses signed vehicle states, $\beta_S=-\infty$ by default;
+set $\beta_S=0$ only when premise variables have first been mapped to a
+non-negative domain.
+
+The learning core is model-agnostic. It is not yet registered in
+`compare_models.m`, and it does not yet define which lateral vehicle states,
+inputs, and normalization transform should form $\zeta_k$. That vehicle-level
+wrapper must be fixed before the EEFIG model can be compared fairly or inserted
+into the MPC.
 
 ## Comparison and interpretation notes
 

@@ -39,13 +39,14 @@ classdef EEFIGLearning < handle
         % Granule set
         granules                % Cell array of TSGranule objects G_k^i
         NG                      % Current number of granules N_G
-        membershipMass          % Running sum of normalized memberships per granule, used by the PJG-like quality test
+        membershipMass          % Running sum of normalized memberships used by the PJG index
+        performanceIndex        % Accumulated PJG performance index per granule
 
         % Ellipsoidal admission and granule update parameters
         epsilon                 % Mahalanobis threshold defining E_k^i = {zeta | M_k^i <= epsilon}
         confidence              % Optional chi-square confidence used to compute epsilon
         membership_update_threshold % Old-code style threshold; granules with g_i below this are not tested for update
-        use_pjg_quality_check   % If true, revert antecedent updates that reduce the granule quality index
+        use_pjg_quality_check   % If true, revert antecedent updates that reduce the PJG index
 
         % Memory and anomaly parameters
         phi                     % Memory horizon phi: number of recent samples kept in sliding windows
@@ -59,16 +60,16 @@ classdef EEFIGLearning < handle
         tracker_nu              % Centre of auxiliary data tracker nu_aux
         tracker_C               % Inverse covariance of auxiliary tracker C_aux = Sigma_aux^{-1}
         tracker_initialized     % True once the tracker has received a sample
-        tracker_forgetting      % Exponential forgetting factor used by the old tracker update
-        tracker_effective_N     % Effective sample count used in the old inverse-covariance tracker update
+        tracker_forgetting      % Deprecated compatibility parameter (tracker uses the phi-window)
+        tracker_effective_N     % Deprecated compatibility parameter (tracker uses the phi-window)
         c_separation            % c coefficient in the c-separation condition
         use_c_separation        % If true, require c-separation before creating a new granule
 
         % Consequent learning parameters
         rls_forgetting          % RLS forgetting factor eta/ff
-        rls_mode                % 'per_granule' follows the paper; 'global' reproduces the old shared P behaviour
-        global_P                % Global RLS covariance used only when rls_mode = 'global'
-        global_K                % Last global RLS gain used only when rls_mode = 'global'
+        rls_mode                % 'global' follows the paper; 'per_granule' is retained for compatibility
+        global_P                % Shared RLS inverse autocorrelation matrix P_k
+        global_K                % Last shared RLS gain Upsilon_k
 
         % Sliding regression buffers
         zetaWindow              % nzeta x N sliding window of premise vectors zeta_k
@@ -102,18 +103,19 @@ classdef EEFIGLearning < handle
             obj.granules = {};
             obj.NG = 0;
             obj.membershipMass = zeros(0,1);
+            obj.performanceIndex = zeros(0,1);
 
             obj.confidence = getFieldOrDefault(params, 'confidence', 0.95);
             obj.epsilon = getFieldOrDefault(params, 'epsilon', chi2inv(obj.confidence, obj.nzeta));
             obj.membership_update_threshold = getFieldOrDefault(params, 'membership_update_threshold', 1e-6);
-            obj.use_pjg_quality_check = getFieldOrDefault(params, 'use_pjg_quality_check', false);
+            obj.use_pjg_quality_check = getFieldOrDefault(params, 'use_pjg_quality_check', true);
 
             obj.phi = getFieldOrDefault(params, 'phi', 30);
-            obj.n_anomaly_max = getFieldOrDefault(params, 'n_anomaly_max', obj.nzeta);
+            obj.n_anomaly_max = getFieldOrDefault(params, 'n_anomaly_max', 5);
             obj.anomaly_counter = 0;
             obj.anomalyZetaBuffer = zeros(obj.nzeta, 0);
             obj.anomalyXNextBuffer = zeros(obj.nx, 0);
-            obj.clear_anomaly_buffer_on_normal = getFieldOrDefault(params, 'clear_anomaly_buffer_on_normal', false);
+            obj.clear_anomaly_buffer_on_normal = getFieldOrDefault(params, 'clear_anomaly_buffer_on_normal', true);
 
             obj.tracker_nu = zeros(obj.nzeta, 1);
             obj.tracker_C = eye(obj.nzeta);
@@ -123,8 +125,8 @@ classdef EEFIGLearning < handle
             obj.c_separation = getFieldOrDefault(params, 'c_separation', 2.0);
             obj.use_c_separation = getFieldOrDefault(params, 'use_c_separation', true);
 
-            obj.rls_forgetting = getFieldOrDefault(params, 'rls_forgetting', 0.975);
-            obj.rls_mode = getFieldOrDefault(params, 'rls_mode', 'per_granule');
+            obj.rls_forgetting = getFieldOrDefault(params, 'rls_forgetting', 0.99);
+            obj.rls_mode = getFieldOrDefault(params, 'rls_mode', 'global');
             obj.global_P = getFieldOrDefault(params, 'global_P', 1e5 * eye(obj.nzeta));
             obj.global_K = zeros(obj.nzeta, 1);
 
@@ -167,8 +169,8 @@ classdef EEFIGLearning < handle
             %
             % Behaviour:
             %   - In 'online' mode, the active consequent is updated with RLS.
-            %   - In 'offline' mode, consequents are preferably fitted later
-            %     with fitAllConsequentsWLS(); no RLS is applied.
+            %   - In 'offline' mode, the active consequent is fitted by WLS
+            %     from the current moving window; no RLS is applied.
 
             if nargin < 4
                 mode = 'online';
@@ -226,8 +228,10 @@ classdef EEFIGLearning < handle
             end
             status.anomaly_counter = obj.anomaly_counter;
 
+            created_new_granule = false;
             if obj.shouldCreateNewGranule()
                 obj.createGranuleFromAnomaliesOrWindow();
+                created_new_granule = true;
                 status.created_new_granule = true;
                 status.active_idx = obj.NG;
                 obj.anomaly_counter = 0;
@@ -240,14 +244,18 @@ classdef EEFIGLearning < handle
                 status.xi_post = xi_post;
             end
 
-            % Consequent update.
+            % Consequent update. Algorithm 1 makes granule creation/WLS and
+            % the ordinary consequent update mutually exclusive.
             if strcmpi(mode, 'online')
-                obj.updateConsequentOnline(status.active_idx, zeta, x_next);
+                if ~created_new_granule
+                    obj.updateConsequentOnline(status.active_idx, zeta, x_next);
+                end
             elseif strcmpi(mode, 'offline')
-                % For offline learning, the paper uses WLS. We postpone the
-                % final WLS to trainOfflinePairs()/fitAllConsequentsWLS(),
-                % but still initialize empty consequents from the current window.
-                obj.ensureConsequentExists(status.active_idx);
+                if ~created_new_granule
+                    % Equation (24): batch windowed least squares on the
+                    % moving phi-sample window for the active granule.
+                    obj.fitConsequentWLS(status.active_idx, obj.zetaWindow, obj.xNextWindow);
+                end
             else
                 error('Unknown learning mode: %s. Use online or offline.', mode);
             end
@@ -269,9 +277,8 @@ classdef EEFIGLearning < handle
             %   zeta_k = [x_k; u_k], target = x_{k+1}
             % for k = 1,...,N-1.
             %
-            % This function updates the granule structure sample by sample,
-            % then fits every consequent A_i,B_i with WLS using all assigned
-            % offline samples.
+            % This function updates the structure sample by sample and uses
+            % moving-window WLS for the active consequent at every step.
 
             N = size(X, 2);
             if size(U, 2) < N - 1
@@ -287,7 +294,6 @@ classdef EEFIGLearning < handle
                 obj.updatePair(Zeta(:, kidx), Xnext(:, kidx), 'offline');
             end
 
-            obj.fitAllConsequentsWLS(Zeta, Xnext);
         end
 
         function trainOfflinePairs(obj, Zeta, Xnext)
@@ -306,7 +312,6 @@ classdef EEFIGLearning < handle
                 obj.updatePair(Zeta(:, kidx), Xnext(:, kidx), 'offline');
             end
 
-            obj.fitAllConsequentsWLS(Zeta, Xnext);
         end
 
         function [Abar, Bbar, g] = instantiateAB(obj, zeta)
@@ -368,6 +373,25 @@ classdef EEFIGLearning < handle
             end
         end
 
+        function [g, xi, lambda0, lambda1, f] = membershipGeometry(obj, zeta)
+            %MEMBERSHIPGEOMETRY Membership and bound sensitivities for PJG.
+
+            zeta = zeta(:);
+            [g, xi] = obj.computeMemberships(zeta);
+            lambda0 = zeros(obj.NG, obj.nzeta);
+            lambda1 = zeros(obj.NG, obj.nzeta);
+            f = zeros(obj.NG, 1);
+
+            for q = 1:obj.NG
+                gran = obj.granules{q};
+                width = max(gran.zeta_max - gran.zeta_min, gran.reg);
+                distance = zeta - gran.nu;
+                f(q) = sqrt(sum((distance ./ width).^2));
+                lambda0(q, :) = (2 * distance ./ width.^2)';
+                lambda1(q, :) = (2 * distance.^2 ./ width.^3)';
+            end
+        end
+
         function [is_anomaly, accepted_idx, reverted_idx] = evaluateAndUpdateAntecedents(obj, zeta, g_pre)
             %EVALUATEANDUPDATEANTECEDENTS Update all admissible granule antecedents.
             %
@@ -376,7 +400,7 @@ classdef EEFIGLearning < handle
             %   2) skip granules with negligible normalized membership,
             %   3) check ellipsoidal admission zeta in E_k^i,
             %   4) update nu, Sigma, zeta_min, zeta_max,
-            %   5) optionally revert if the PJG-like quality index worsens,
+            %   5) revert if the PJG quality index worsens,
             %   6) mark the sample as non-anomalous if any granule accepts it.
 
             is_anomaly = true;
@@ -403,9 +427,10 @@ classdef EEFIGLearning < handle
         function [accepted, reverted] = tryUpdateOneGranuleAntecedent(obj, i, zeta, g_i)
             %TRYUPDATEONEGRANULEANTECEDENT Try to update granule i.
             %
-            % The sample is accepted only if zeta belongs to the ellipsoid
-            % E_k^i, i.e. M_k^i <= epsilon. If use_pjg_quality_check is true,
-            % the update is kept only when the quality index does not decrease.
+            % The sample is admitted if zeta belongs to E_k^i. Its tentative
+            % update is retained only when the equation-(14) index does not
+            % decrease. Reverting an update does not turn an admitted sample
+            % into an anomaly.
 
             accepted = false;
             reverted = false;
@@ -417,33 +442,59 @@ classdef EEFIGLearning < handle
 
             accepted = true;
             snapshot = obj.captureAntecedent(gran);
-            oldQuality = obj.granuleQuality(i, gran, zeta, g_i);
+            [g_before, xi_before, lambda0, lambda1, f] = obj.membershipGeometry(zeta);
+            oldQuality = obj.performanceIndex(i);
 
             gran.updateAntecedent(zeta, g_i);
 
-            newQuality = obj.granuleQuality(i, gran, zeta, g_i);
+            delta_lower = gran.zeta_min - snapshot.zeta_min;
+            delta_center = gran.nu - snapshot.nu;
+            delta_upper = gran.zeta_max - snapshot.zeta_max;
+            candidateMass = obj.pjgMembershipMass(i, g_before, xi_before, ...
+                lambda0, lambda1, f, delta_lower, delta_center, delta_upper);
+            qualityIncrement = gran.mahalanobis(zeta) * candidateMass;
+            newQuality = oldQuality + qualityIncrement;
 
-            if obj.use_pjg_quality_check && newQuality < oldQuality
+            quality_tolerance = 100 * obj.regularization * max(1, abs(oldQuality));
+            invalidCandidate = ~isfinite(candidateMass) || candidateMass <= 0 || ~isfinite(newQuality);
+            if obj.use_pjg_quality_check && (invalidCandidate || newQuality + quality_tolerance < oldQuality)
                 obj.restoreAntecedent(gran, snapshot);
                 reverted = true;
             else
-                obj.membershipMass(i) = obj.membershipMass(i) + g_i;
+                if invalidCandidate
+                    [g_candidate, ~] = obj.computeMemberships(zeta);
+                    candidateMass = obj.membershipMass(i) + g_candidate(i);
+                    newQuality = oldQuality + gran.mahalanobis(zeta) * candidateMass;
+                end
+                obj.membershipMass(i) = candidateMass;
+                obj.performanceIndex(i) = newQuality;
             end
         end
 
-        function Q = granuleQuality(obj, i, gran, zeta, g_i)
-            %GRANULEQUALITY PJG-inspired quality index for an update.
+        function candidateMass = pjgMembershipMass(obj, i, g, xi, lambda0, lambda1, f, delta_lower, delta_center, delta_upper)
+            %PJGMEMBERSHIPMASS First-order PJG coverage update from [39].
             %
-            % The paper defines an index involving the Mahalanobis distance
-            % and accumulated membership evidence. The old code stores this
-            % as Q and gsum. Here we keep the same idea at the manager level:
-            %   Q_i(zeta) = M_i(zeta) * accumulated_membership_i.
-            %
-            % A larger value means that the granule covers more evidence for
-            % the admitted sample. This is used only if use_pjg_quality_check=true.
+            % The bound and centre changes alter the normalized membership
+            % of every rule. This sensitivity correction is the part that a
+            % simple "old mass + g_i" approximation misses.
 
-            M = gran.mahalanobis(zeta);
-            Q = M * max(obj.membershipMass(i) + g_i, obj.regularization);
+            sum_xi = max(sum(xi), obj.regularization);
+            safe_f = max(f, sqrt(obj.regularization));
+            weighted_l0 = sum((xi ./ safe_f) .* lambda0, 1);
+            weighted_l1 = sum((xi ./ safe_f) .* lambda1, 1);
+
+            d_g_d_lower = xi(i) * weighted_l1 / sum_xi^2 ...
+                - xi(i) * lambda1(i, :) / (safe_f(i) * sum_xi);
+            d_g_d_center = xi(i) * lambda0(i, :) / (safe_f(i) * sum_xi) ...
+                - xi(i) * weighted_l0 / sum_xi^2;
+            d_g_d_upper = xi(i) * lambda1(i, :) / (safe_f(i) * sum_xi) ...
+                - xi(i) * weighted_l1 / sum_xi^2;
+
+            correction = g(i) ...
+                - d_g_d_lower * delta_lower ...
+                + d_g_d_center * delta_center ...
+                + d_g_d_upper * delta_upper;
+            candidateMass = obj.membershipMass(i) + correction;
         end
 
         function updateConsequentOnline(obj, active_idx, zeta, x_next)
@@ -473,10 +524,10 @@ classdef EEFIGLearning < handle
         end
 
         function updateConsequentRLSGlobalP(obj, active_idx, zeta, x_next)
-            %UPDATECONSEQUENTRLSGLOBALP Old-code style RLS with one shared P.
+            %UPDATECONSEQUENTRLSGLOBALP Equations (21)-(23), with shared P.
             %
-            % The old learn_EEFIG code used a single covariance matrix P and
-            % gain K for all granules. This method preserves that behaviour.
+            % The paper denotes a single P_k and Upsilon_k, shared across the
+            % currently active local consequent.
 
             zeta = zeta(:);
             x_next = x_next(:);
@@ -527,12 +578,14 @@ classdef EEFIGLearning < handle
         end
 
         function fitAllConsequentsWLS(obj, Zeta, Xnext)
-            %FITALLCONSEQUENTSWLS Offline WLS fit for every granule.
+            %FITALLCONSEQUENTSWLS Optional post-fit, not Algorithm-1 training.
             %
             % Each sample is assigned to the granule with maximum current
             % membership. Then each local model is fitted using the samples
             % assigned to that granule. If a granule receives too few samples,
-            % the full dataset is used as a fallback to keep A/B defined.
+            % the full dataset is used as a fallback to keep A/B defined. The
+            % standard trainOffline methods intentionally do not call this:
+            % they use equation-(24) moving-window WLS sequentially.
 
             if obj.NG == 0
                 error('Cannot fit consequents: the model has no granules.');
@@ -588,40 +641,27 @@ classdef EEFIGLearning < handle
             obj.anomalyXNextBuffer = zeros(obj.nx, 0);
         end
 
-        function updateAuxTracker(obj, zeta)
-            %UPDATEAUXTRACKER Update auxiliary tracker from the newest sample.
+        function updateAuxTracker(obj, ~)
+            %UPDATEAUXTRACKER Build G_aux from the current phi-sample memory.
             %
-            % This follows the spirit of the old trackerm/trackerC update.
-            % tracker_C stores an inverse covariance, not Sigma directly.
+            % Section 2.2 defines the auxiliary granule from the memory
+            % horizon. Recomputing its sample mean and covariance is the
+            % direct windowed implementation and avoids a second, unrelated
+            % exponential tracker recursion.
 
-            zeta = zeta(:);
-
-            if ~obj.tracker_initialized
-                obj.tracker_nu = zeta;
-                obj.tracker_C = eye(obj.nzeta);
-                obj.tracker_initialized = true;
+            if isempty(obj.zetaWindow)
                 return;
             end
 
-            prev_nu = obj.tracker_nu;
-            prev_C = obj.tracker_C;
-            lambda = obj.tracker_forgetting;
-            effectiveN = obj.tracker_effective_N;
-
-            dz = zeta - prev_nu;
-            denom = dz' * prev_C * dz + (effectiveN - 1) / lambda;
-            multiplier = effectiveN / ((effectiveN - 1) * lambda);
-
-            C_new = prev_C - (prev_C * dz * dz' * prev_C) / max(denom, obj.regularization);
-            C_new = multiplier * C_new;
-            C_new = 0.5 * (C_new + C_new') + obj.regularization * eye(obj.nzeta);
-
-            if any(isnan(C_new), 'all') || any(isinf(C_new), 'all')
-                C_new = eye(obj.nzeta);
+            obj.tracker_nu = mean(obj.zetaWindow, 2);
+            if size(obj.zetaWindow, 2) >= 2
+                Sigma_aux = cov(obj.zetaWindow');
+            else
+                Sigma_aux = eye(obj.nzeta);
             end
-
-            obj.tracker_C = C_new;
-            obj.tracker_nu = lambda * prev_nu + (1 - lambda) * zeta;
+            Sigma_aux = obj.makePositiveDefinite(Sigma_aux);
+            obj.tracker_C = obj.makePositiveDefinite(pinv(Sigma_aux));
+            obj.tracker_initialized = true;
         end
 
         function create = shouldCreateNewGranule(obj)
@@ -631,8 +671,7 @@ classdef EEFIGLearning < handle
             %   1) anomaly_counter > n_anomaly_max
             %   2) if enabled, auxiliary tracker is c-separated from all granules
             %
-            % This combines the paper text with the explicit old-code
-            % c-separation check.
+            % This implements the two creation conditions in Section 2.2.
 
             create = false;
 
@@ -691,31 +730,19 @@ classdef EEFIGLearning < handle
             obj.NG = 1;
             obj.granules{1} = gran;
             obj.membershipMass = size(obj.zetaWindow, 2);
+            obj.performanceIndex = 0;
         end
 
         function createGranuleFromAnomaliesOrWindow(obj)
             %CREATEGRANULEFROMANOMALIESORWINDOW Create a new granule.
             %
-            % Antecedent initialization:
-            %   - preferably from the latest consecutive anomalous samples,
-            %   - fallback to the global phi-window.
-            %
-            % Consequent initialization:
-            %   - WLS using the current phi-window, as in the paper/old code.
+            % Both antecedent and consequent are initialized from the same
+            % last-phi-sample memory used to construct G_aux in the paper.
 
-            if size(obj.anomalyZetaBuffer, 2) >= max(2, obj.anomaly_counter)
-                nUse = min(obj.anomaly_counter, size(obj.anomalyZetaBuffer, 2));
-                Zinit = obj.anomalyZetaBuffer(:, end-nUse+1:end);
-            else
-                Zinit = obj.zetaWindow;
-            end
+            Zinit = obj.zetaWindow;
 
             zeta0 = Zinit(:, end);
-            if ~isempty(obj.anomalyXNextBuffer)
-                xnext0 = obj.anomalyXNextBuffer(:, end);
-            else
-                xnext0 = obj.xNextWindow(:, end);
-            end
+            xnext0 = obj.xNextWindow(:, end);
 
             gran = TSGranule(obj.nx, obj.nu_in, zeta0, xnext0, obj.granule_params);
             obj.initializeGranuleAntecedentFromWindow(gran, Zinit);
@@ -724,6 +751,7 @@ classdef EEFIGLearning < handle
             obj.NG = obj.NG + 1;
             obj.granules{obj.NG} = gran;
             obj.membershipMass(obj.NG, 1) = size(Zinit, 2);
+            obj.performanceIndex(obj.NG, 1) = 0;
         end
 
         function initializeGranuleAntecedentFromWindow(obj, gran, Zeta)
@@ -732,7 +760,7 @@ classdef EEFIGLearning < handle
             % This replaces old gran_init(p, buffer) with explicit variables:
             %   nu        <- mean of Zeta
             %   Sigma     <- covariance of Zeta
-            %   S, T      <- average lower/upper dispersion around nu
+            %   S, T      <- conditional dispersion matrices from (16)-(17)
             %   zeta_min  <- lower bound
             %   zeta_max  <- upper bound
 
@@ -754,39 +782,32 @@ classdef EEFIGLearning < handle
             gran.SigmaInv = pinv(Sigma);
             gran.n_samples = N;
 
-            S = zeros(obj.nzeta, 1);
-            T = zeros(obj.nzeta, 1);
+            S = zeros(obj.nzeta, obj.nzeta);
+            T = zeros(obj.nzeta, obj.nzeta);
+            s_count = zeros(obj.nzeta, 1);
+            t_count = zeros(obj.nzeta, 1);
 
             for j = 1:obj.nzeta
-                below = Zeta(j, Zeta(j, :) < gran.nu(j));
-                above = Zeta(j, Zeta(j, :) >= gran.nu(j));
+                below = Zeta(j, :) < gran.nu(j);
+                above = ~below;
+                s_count(j) = sum(below);
+                t_count(j) = sum(above);
 
-                if isempty(below)
-                    S(j) = obj.regularization;
-                else
-                    S(j) = mean(gran.nu(j) - below);
+                if s_count(j) > 0
+                    S(j, :) = mean(gran.nu - Zeta(:, below), 2)';
                 end
-
-                if isempty(above)
-                    T(j) = obj.regularization;
-                else
-                    T(j) = mean(above - gran.nu(j));
+                if t_count(j) > 0
+                    T(j, :) = mean(Zeta(:, above) - gran.nu, 2)';
                 end
             end
 
             gran.S = S;
             gran.T = T;
-
-            lambda = getFieldOrDefault(obj.granule_params, 'lambda', 4.0);
-            iota = getFieldOrDefault(obj.granule_params, 'iota', 0.0);
-            betaS = getFieldOrDefault(obj.granule_params, 'betaS', -inf);
-            betaT = getFieldOrDefault(obj.granule_params, 'betaT', inf);
-
-            lower_raw = max(gran.nu - lambda * S, betaS);
-            upper_raw = min(gran.nu + lambda * T, betaT);
-
-            gran.zeta_min = lower_raw + (gran.nu - lower_raw) * iota;
-            gran.zeta_max = upper_raw - (upper_raw - gran.nu) * iota;
+            gran.s_count = s_count;
+            gran.t_count = t_count;
+            gran.membership_sum = max(N, 1);
+            gran.membership_square_sum = max(N, 1);
+            gran.refreshBounds();
         end
 
         function snapshot = captureAntecedent(~, gran)
@@ -799,6 +820,10 @@ classdef EEFIGLearning < handle
             snapshot.zeta_max = gran.zeta_max;
             snapshot.S = gran.S;
             snapshot.T = gran.T;
+            snapshot.s_count = gran.s_count;
+            snapshot.t_count = gran.t_count;
+            snapshot.membership_sum = gran.membership_sum;
+            snapshot.membership_square_sum = gran.membership_square_sum;
             snapshot.n_samples = gran.n_samples;
         end
 
@@ -812,7 +837,23 @@ classdef EEFIGLearning < handle
             gran.zeta_max = snapshot.zeta_max;
             gran.S = snapshot.S;
             gran.T = snapshot.T;
+            gran.s_count = snapshot.s_count;
+            gran.t_count = snapshot.t_count;
+            gran.membership_sum = snapshot.membership_sum;
+            gran.membership_square_sum = snapshot.membership_square_sum;
             gran.n_samples = snapshot.n_samples;
+        end
+
+        function M = makePositiveDefinite(obj, M)
+            %MAKEPOSITIVEDEFINITE Symmetrize and floor eigenvalues.
+
+            M = 0.5 * (M + M');
+            [V, D] = eig(M);
+            d = real(diag(D));
+            d(~isfinite(d)) = obj.regularization;
+            d = max(d, obj.regularization);
+            M = real(V * diag(d) * V');
+            M = 0.5 * (M + M');
         end
 
         function v = largestVarianceFromInvCov(obj, C)

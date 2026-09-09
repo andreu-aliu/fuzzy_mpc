@@ -26,8 +26,13 @@ classdef TSGranule < handle
         zeta_min        % Lower bound underline{zeta}_k^i
         zeta_max        % Upper bound overline{zeta}_k^i
 
-        S               % Lower-side dispersion estimate S_k^i
-        T               % Upper-side dispersion estimate T_k^i
+        S               % Lower-side conditional dispersions S_k,j,l^i
+        T               % Upper-side conditional dispersions T_k,j,l^i
+        s_count         % Number of samples in each lower partition Z^-_k,j
+        t_count         % Number of samples in each upper partition Z^+_k,j
+
+        membership_sum          % First accumulated membership moment
+        membership_square_sum   % Second accumulated membership moment
 
         n_samples       % Number of samples admitted into this granule
 
@@ -65,22 +70,29 @@ classdef TSGranule < handle
             zeta0 = zeta0(:);
             x_next0 = x_next0(:);
 
-            obj.lambda = getFieldOrDefault(params, 'lambda', 4.0);
-            obj.iota   = getFieldOrDefault(params, 'iota',   0.0);
-            obj.betaS  = getFieldOrDefault(params, 'betaS',  0.0);
+            obj.lambda = getFieldOrDefault(params, 'lambda', 3.0);
+            obj.iota   = getFieldOrDefault(params, 'iota',   0.3);
+            % betaS=0 in the paper because its premise variables are mapped
+            % to a non-negative domain. Vehicle states contain signed values,
+            % so -Inf is the safe default unless the caller scales them.
+            obj.betaS  = getFieldOrDefault(params, 'betaS', -inf);
             obj.betaT  = getFieldOrDefault(params, 'betaT',  inf);
             obj.eta    = getFieldOrDefault(params, 'eta',    0.99);
-            obj.reg    = getFieldOrDefault(params, 'reg',    1e-6);
+            obj.reg    = getFieldOrDefault(params, 'reg',    1e-8);
 
             obj.nu = zeta0;
             obj.Sigma = eye(obj.nzeta) * obj.reg;
             obj.SigmaInv = inv(obj.Sigma);
 
-            obj.S = zeros(obj.nzeta, 1);
-            obj.T = zeros(obj.nzeta, 1);
+            obj.S = zeros(obj.nzeta, obj.nzeta);
+            obj.T = zeros(obj.nzeta, obj.nzeta);
+            obj.s_count = zeros(obj.nzeta, 1);
+            obj.t_count = zeros(obj.nzeta, 1);
+            obj.membership_sum = 1;
+            obj.membership_square_sum = 1;
 
-            obj.zeta_min = max(obj.nu - obj.lambda * obj.S, obj.betaS);
-            obj.zeta_max = min(obj.nu + obj.lambda * obj.T, obj.betaT);
+            obj.zeta_min = obj.nu - sqrt(obj.reg);
+            obj.zeta_max = obj.nu + sqrt(obj.reg);
 
             obj.n_samples = 1;
 
@@ -94,7 +106,7 @@ classdef TSGranule < handle
             obj.A = obj.Theta(:, 1:obj.nx);
             obj.B = obj.Theta(:, obj.nx+1:end);
 
-            obj.P_rls = eye(obj.nzeta) * 1e3;
+            obj.P_rls = eye(obj.nzeta) * 1e5;
         end
 
         function M = mahalanobis(obj, zeta)
@@ -133,7 +145,7 @@ classdef TSGranule < handle
             xi = exp(-2.0 * normalized_distance);
         end
 
-        function updateAntecedent(obj, zeta, g_i) % TODO: Not the same as paper
+        function updateAntecedent(obj, zeta, g_i)
             % UPDATEANTECEDENT Update nu, Sigma, S, T, zeta_min and zeta_max.
             %
             % This updates the antecedent part of G_k^i after zeta_k has
@@ -143,44 +155,90 @@ classdef TSGranule < handle
 
             zeta = zeta(:);
 
-            obj.n_samples = obj.n_samples + 1;
-
             nu_old = obj.nu;
-            Sigma_old = obj.Sigma;
+            C_old = obj.SigmaInv;
 
-            % Update center nu_k^i.
-            % Paper-inspired incremental update:
-            % nu_k^i = nu_{k-1}^i + g_i * (zeta_k - nu_{k-1}^i)
-            obj.nu = nu_old + g_i * (zeta - nu_old);
+            weight = min(max(double(g_i), obj.reg), 1);
+            alpha_old = max(obj.membership_sum, 1);
+            beta_old = max(obj.membership_square_sum, obj.reg);
+            alpha_new = alpha_old + weight;
+            beta_new = beta_old + weight^2;
 
-            % Update covariance with a stable weighted incremental formula.
-            % This is not a literal copy of eq. (18), but it serves the same
-            % purpose: updating Sigma_k^i online from admitted samples.
-            dz_old = zeta - nu_old;
-            dz_new = zeta - obj.nu;
+            % Update the centre with the normalized accumulated evidence.
+            % This is the recursive-mean realization of (15) used by the
+            % underlying EEFIG method; without the accumulated denominator,
+            % a single-granule model would jump completely to every sample.
+            center_gain = weight / alpha_old;
+            obj.nu = nu_old + center_gain * (zeta - nu_old);
 
-            alpha = 1.0 / obj.n_samples;
-            obj.Sigma = (1 - alpha) * Sigma_old + alpha * (dz_old * dz_new');
+            % Equation (18): recursive inverse-covariance update. The first
+            % and second accumulated membership moments correspond to rho
+            % and tau in the paper's Gamma/Lambda expressions. The algebraic
+            % form below follows the reference EEFIG recursion.
+            gamma_num = alpha_old * (alpha_new^2 - beta_new);
+            gamma_den = alpha_new * (alpha_old^2 - beta_new);
+            lambda_num = alpha_new * (alpha_old^2 - beta_old);
+            lambda_den = alpha_old * weight * (weight + alpha_new - 2);
 
-            % Regularize to avoid singular covariance.
-            obj.Sigma = 0.5 * (obj.Sigma + obj.Sigma') + obj.reg * eye(obj.nzeta);
-            obj.SigmaInv = inv(obj.Sigma);
+            Gamma = gamma_num / gamma_den;
+            Lambda = lambda_num / lambda_den;
+            dz = zeta - obj.nu;
+            sm_denom = Lambda + dz' * C_old * dz;
 
-            % Update lower/upper side dispersion estimates.
+            if isfinite(Gamma) && Gamma > 0 && isfinite(sm_denom) && sm_denom > obj.reg
+                C_new = Gamma * (C_old - (C_old * (dz * dz') * C_old) / sm_denom);
+            else
+                % Degenerate first-moment configurations can make Eq. (18)
+                % undefined. Retain the previous ellipsoid instead of
+                % injecting NaN/Inf into every subsequent membership.
+                C_new = C_old;
+            end
+
+            C_new = obj.makePositiveDefinite(C_new);
+            obj.SigmaInv = C_new;
+            obj.Sigma = obj.makePositiveDefinite(pinv(C_new));
+
+            % Equations (16)-(17). Each row j stores a complete dispersion
+            % vector conditioned on whether premise component j lies below
+            % or above the updated centre; cross-feature information is kept.
             for j = 1:obj.nzeta
                 if zeta(j) < obj.nu(j)
-                    obj.S(j) = obj.S(j) + alpha * ((obj.nu(j) - zeta(j)) - obj.S(j));
+                    obj.s_count(j) = obj.s_count(j) + 1;
+                    n = obj.s_count(j);
+                    obj.S(j, :) = ((n - 1) * obj.S(j, :) + (obj.nu - zeta)') / n;
                 else
-                    obj.T(j) = obj.T(j) + alpha * ((zeta(j) - obj.nu(j)) - obj.T(j));
+                    obj.t_count(j) = obj.t_count(j) + 1;
+                    n = obj.t_count(j);
+                    obj.T(j, :) = ((n - 1) * obj.T(j, :) + (zeta - obj.nu)') / n;
                 end
             end
 
-            % Update bounds underline{zeta}_k^i and overline{zeta}_k^i.
-            lower_raw = max(obj.nu - obj.lambda * obj.S, obj.betaS);
-            upper_raw = min(obj.nu + obj.lambda * obj.T, obj.betaT);
+            obj.membership_sum = alpha_new;
+            obj.membership_square_sum = beta_new;
+            obj.n_samples = obj.n_samples + 1;
+            obj.refreshBounds();
+        end
+
+        function refreshBounds(obj)
+            % REFRESHBOUNDS Compute (6)-(7) from conditional dispersions.
+            %
+            % The original PJG optimizer selects bounds from the conditional
+            % candidates indexed by j. Taking the largest positive candidate
+            % independently in each dimension preserves their union and keeps
+            % a single lower/upper vector required by equation (10).
+
+            lower_spread = max(max(obj.S, [], 1)', 0);
+            upper_spread = max(max(obj.T, [], 1)', 0);
+
+            lower_raw = max(obj.nu - obj.lambda * lower_spread, obj.betaS);
+            upper_raw = min(obj.nu + obj.lambda * upper_spread, obj.betaT);
 
             obj.zeta_min = lower_raw + (obj.nu - lower_raw) * obj.iota;
             obj.zeta_max = upper_raw - (upper_raw - obj.nu) * obj.iota;
+
+            min_half_width = sqrt(obj.reg);
+            obj.zeta_min = min(obj.zeta_min, obj.nu - min_half_width);
+            obj.zeta_max = max(obj.zeta_max, obj.nu + min_half_width);
         end
 
         function updateConsequentRLS(obj, zeta_prev, x_next)
@@ -252,6 +310,18 @@ classdef TSGranule < handle
             u = u(:);
 
             x_next_pred = obj.A * x + obj.B * u;
+        end
+
+        function M = makePositiveDefinite(obj, M)
+            % MAKEPOSITIVEDEFINITE Symmetrize and floor eigenvalues.
+
+            M = 0.5 * (M + M');
+            [V, D] = eig(M);
+            d = real(diag(D));
+            d(~isfinite(d)) = obj.reg;
+            d = max(d, obj.reg);
+            M = real(V * diag(d) * V');
+            M = 0.5 * (M + M');
         end
     end
 end
