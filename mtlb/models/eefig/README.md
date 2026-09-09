@@ -201,18 +201,18 @@ The script currently uses the explicit `mtlb_dir` expected by the project, so it
 
 Important parameters are:
 
-| Parameter | Current value | Meaning |
-|---|---:|---|
-| `keep_factor` | `1` | Uses every transition and preserves stream continuity. |
-| `filter_window` | `21` | Savitzky-Golay window applied independently to each run. |
-| `phi` | `100` | Number of recent transitions used for initialization and offline fitting. At 50 Hz this is 2 s. |
-| `min_initial_samples` | `100` | Samples required before creating the first granule. |
-| `confidence` | `0.999` | Confidence used for the ellipsoidal admission threshold. |
-| `n_anomaly_max` | `5` | Persistent anomaly count used before testing granule creation. |
-| `c_separation` | `0.5` | Required separation of a candidate operating region. |
-| `rls_mode` | `per_granule` | Gives each local model its own online RLS covariance. |
-| `rls_P0` | `10` | Initial online parameter uncertainty for each local model. |
-| `rls_forgetting` | `0.99` | Online RLS forgetting factor. Lower values adapt faster but forget sooner. |
+| Parameter | Current value | Meaning | Intuition and training effect |
+|---|---:|---|---|
+| `keep_factor` | `1` | Uses every available one-step transition. | Increasing it processes fewer pairs, reducing training time but also discarding excitation and making structural updates sparser. It does not change the one-step target interval: every retained sample still targets its immediate successor. |
+| `filter_window` | `21` | Savitzky-Golay window applied independently to each run. | A larger window suppresses more measurement noise and usually produces smoother granules, but can blur short transients and reduce the apparent nonlinear dynamics. A smaller window preserves fast behavior but lets more noise drive anomaly detection and parameter fitting. |
+| `phi` | `100` | Number of recent transitions used for initialization, offline fitting, and the auxiliary tracker. At 50 Hz this is 2 s. | A larger window gives smoother, more statistically stable local fits but reacts more slowly to a new regime and mixes a wider range of conditions. A smaller window is more local and responsive, but its covariance and consequent estimates are noisier. |
+| `min_initial_samples` | `100` | Samples required before creating the first granule and before fitting after a run reset. | Increasing it makes initialization and post-boundary WLS fits better supported, but delays learning at the start of each run. Very small values can create poorly shaped initial granules or ill-conditioned local models. |
+| `confidence` | `0.999` | Confidence used to convert the four-dimensional chi-square distribution into the Mahalanobis admission threshold. | Increasing it enlarges the admission ellipsoids, so more samples update existing granules and fewer are labelled anomalous. Decreasing it makes the regions stricter and can create more specialized granules, but may fragment the model. |
+| `n_anomaly_max` | `5` | Number of consecutive anomalies that must be exceeded before testing granule creation. | Increasing it requires longer evidence before creating a rule, reducing noise-driven granules but delaying recognition of a genuine new regime. Decreasing it makes the structure grow faster and more readily. |
+| `c_separation` | `0.5` | Minimum normalized geometric separation required between a candidate region and every existing granule. | Increasing it makes new-granule creation harder because the candidate must be farther away, generally producing fewer rules. Decreasing it allows closer granules and a more detailed but potentially redundant partition. |
+| `rls_mode` | `per_granule` | Chooses a separate online RLS covariance per local model instead of the paper's shared global covariance. | This does not affect offline WLS training. During online adaptation, `per_granule` lets rules retain independent uncertainty and was more stable on the current vehicle data; `global` couples their adaptation through one covariance matrix. |
+| `rls_P0` | `10` | Initial online RLS parameter covariance. | This does not affect offline WLS fitting. A larger value makes the first online updates more aggressive because the model initially declares greater uncertainty; an excessively large value can produce parameter jumps. A smaller value adapts more conservatively. |
+| `rls_forgetting` | `0.99` | Online RLS forgetting factor. | This does not affect the offline WLS solution. Values closer to `1` retain older information and adapt smoothly; lower values track changes faster but are more sensitive to noise and can forget the offline dynamics too quickly. |
 
 These values are the current real-data configuration, not universal constants. Change one structural parameter at a time and compare held-out error, granule count, evaluation coverage, and propagation stability.
 
