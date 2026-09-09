@@ -45,7 +45,7 @@ end
 
 %% Processed signal integrity and excitation
 
-signal_names = {'vx','vy','r','ax','ay','delta','st','mz', ...
+signal_names = {'psi','vx','vy','r','ax','ay','delta','st','mz', ...
     'Tfl','Tfr','Trl','Trr'};
 signal_table = make_signal_table(data, signal_names);
 
@@ -68,12 +68,14 @@ fprintf(['Lateral excitation: %.1f %% of samples satisfy |delta| > 0.03 rad, ' .
 vx = data.vx(:);
 vy = data.vy(:);
 r = data.r(:);
+psi = unwrap(data.psi(:));
 ax_measured = data.ax(:);
 ay_measured = data.ay(:);
 
 vx_dot = gradient(vx, Ts);
 vy_dot = gradient(vy, Ts);
 r_dot = gradient(r, Ts);
+heading_rate = gradient(psi, Ts);
 
 % Body-frame kinematics.
 ax_reconstructed = vx_dot - vy.*r;
@@ -83,6 +85,8 @@ ay_reconstructed = vy_dot + vx.*r;
     ax_measured, ax_reconstructed);
 [ay_correlation, ay_nrmse, ay_bias] = consistency_metrics( ...
     ay_measured, ay_reconstructed);
+[heading_correlation, heading_nrmse, heading_bias] = consistency_metrics( ...
+    r, heading_rate);
 
 max_lag_samples = round(max_lag_seconds / Ts);
 [st_delta_correlation, st_delta_lag] = best_lag( ...
@@ -95,10 +99,11 @@ max_lag_samples = round(max_lag_seconds / Ts);
     ay_measured, ay_reconstructed, max_lag_samples, false);
 
 physical_table = table( ...
-    ["ax vs dvx/dt - vy*r"; "ay vs dvy/dt + vx*r"], ...
-    [ax_correlation; ay_correlation], ...
-    [ax_nrmse; ay_nrmse], ...
-    [ax_bias; ay_bias], ...
+    ["ax vs dvx/dt - vy*r"; "ay vs dvy/dt + vx*r"; ...
+     "yaw rate r vs d(heading)/dt"], ...
+    [ax_correlation; ay_correlation; heading_correlation], ...
+    [ax_nrmse; ay_nrmse; heading_nrmse], ...
+    [ax_bias; ay_bias; heading_bias], ...
     'VariableNames', {'Check','Correlation','NormalizedRMSE','Bias'});
 
 lag_table = table( ...
@@ -265,25 +270,23 @@ hold on; plot_identity_line(ay_reconstructed, ay_measured);
 xlabel('Reconstructed a_y [m/s^2]'); ylabel('Measured a_y [m/s^2]');
 title(sprintf('a_y: corr %.3f, NRMSE %.2f', ay_correlation, ay_nrmse)); grid on;
 
-%% Yaw rate versus trajectory course rate
+%% Recorded planar heading consistency
 
-dx = gradient(data.x(:), Ts);
-dy = gradient(data.y(:), Ts);
-course_angle = unwrap(atan2(dy, dx));
-course_rate = gradient(course_angle, Ts);
-
-figure('Name','Course-rate check','Color','w','Position',[180 180 1400 700]);
-course_layout = tiledlayout(2,1,'TileSpacing','compact','Padding','compact');
-nexttile(course_layout); hold on;
+figure('Name','Heading-rate check','Color','w','Position',[180 180 1400 700]);
+heading_layout = tiledlayout(2,1,'TileSpacing','compact','Padding','compact');
+nexttile(heading_layout); hold on;
 plot(t, r, 'LineWidth', 1.1);
-plot(t, course_rate, 'LineWidth', 1.1);
-ylabel('[rad/s]'); title('Yaw rate and trajectory course rate');
-legend('Vehicle yaw rate r','d(course angle)/dt'); grid on;
+plot(t, heading_rate, 'LineWidth', 1.1);
+ylabel('[rad/s]'); title('Yaw rate and derivative of recorded planar heading');
+legend('Vehicle yaw rate r','d(heading)/dt'); grid on;
 
-nexttile(course_layout);
-scatter(course_rate, r, 7, 'filled', 'MarkerFaceAlpha',0.15);
-xlabel('d(course angle)/dt [rad/s]'); ylabel('r [rad/s]'); grid on;
-title('These differ when sideslip angle changes; this is not a strict equality check');
+nexttile(heading_layout);
+scatter(heading_rate, r, 7, 'filled', 'MarkerFaceAlpha',0.15);
+hold on;
+plot_identity_line(heading_rate, r);
+xlabel('d(heading)/dt [rad/s]'); ylabel('r [rad/s]'); grid on;
+title(sprintf('Body-yaw consistency: corr %.3f, NRMSE %.2f', ...
+    heading_correlation, heading_nrmse));
 
 %% ANFIS one-step targets and smoothing sensitivity
 

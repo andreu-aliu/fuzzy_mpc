@@ -4,17 +4,19 @@ clear;
 Ts = 0.02;
 dataset_file = fullfile("data", "datasets_evaluation.mat");
 
-% Models to compare
+% Models to compare. Keep each colour fixed across every figure so a model
+% has the same visual identity in summary, residual, and propagation plots.
 models = {
-    @anfis_direct, 'ANFIS direct';
-    @anfis_delta, 'ANFIS delta';
-    @anfis_dot, 'ANFIS derivative';
-    @anfis_residuals, 'ANFIS LTV residual';
-    @eefig, 'EEFIG offline';
-    @nonlinear_bicycle, 'Nonlinear bicycle';
-    @nonlinear_double_track, 'Nonlinear double track';
-    @ltv, 'LTV MPC';
+    @anfis_direct,          'ANFIS direct',          [0.000, 0.447, 0.741];
+    @anfis_delta,           'ANFIS delta',           [0.850, 0.325, 0.098];
+    @anfis_dot,             'ANFIS derivative',      [0.929, 0.694, 0.125];
+    @anfis_residuals,       'ANFIS LTV residual',    [0.494, 0.184, 0.556];
+    @eefig,                 'EEFIG offline',         [0.466, 0.674, 0.188];
+    @nonlinear_bicycle,     'Nonlinear bicycle',     [0.301, 0.745, 0.933];
+    @nonlinear_double_track,'Nonlinear double track',[0.635, 0.078, 0.184];
+    @ltv,                   'LTV MPC',               [0.650, 0.650, 0.650];
 };
+model_colors = vertcat(models{:,3});
 
 % One-step evaluation: evaluate next-state prediction.
 % - Evaluate one-step prediction x_{k+1} from measured x_k and measured inputs u_k.
@@ -67,19 +69,21 @@ for i = 1:numel(datasets)
     run.track_id = datasets(i).track_id;
     run.track_layout = datasets(i).track_layout;
     run.t = data.time(idx);
-    run.x = data.x(idx);
-    run.y = data.y(idx);
+    if ~isfield(data, 'psi')
+        error(['Dataset %d has no measured heading. Regenerate the prepared ' ...
+            'datasets with the current prepare_datasets.m.'], i);
+    end
+    run.psi = data.psi(idx);
     run.vx = data.vx(idx);
     run.vy = data.vy(idx);
     run.r = data.r(idx);
     run.delta = data.delta(idx);
-    run.st = data.st(idx);
 
-    % Local frame (y,psi) for optional propagation plots / completeness
-    [run.y_local, run.psi_local] = localFrameFromXY(run.x, run.y, run.r, run.t);
-
-    % Delta derivative (only used to build state for model signature)
-    run.delta_dot = gradient(run.delta, Ts);
+    % Use recorded body yaw only. SLAM x/y are not used in the dynamics
+    % comparison because their trajectory direction is unreliable and is
+    % not a substitute for vehicle heading under sideslip.
+    run.psi_local = unwrap(run.psi(:));
+    run.psi_local = run.psi_local - run.psi_local(1);
 
     runs{i} = run;
     fprintf(['Rosbag %d prepared: %s | %s | %s | %g lap(s) | ' ...
@@ -89,16 +93,14 @@ end
 
 
 %% One-step evaluation (no propagation)
-% Predict x_{k+1} from measured x_k and measured inputs u_k.
+% Predict x_{k+1} from measured x_k, vx_k, and delta_k. Steering-command
+% and steering-actuator dynamics are outside this model comparison.
 
 res = struct();
 res.models = models(:,2);
-res.e_y = cell(size(models,1),1);
 res.e_vy = cell(size(models,1),1);
 res.e_psi = cell(size(models,1),1);
 res.e_r  = cell(size(models,1),1);
-res.e_delta = cell(size(models,1),1);
-res.e_delta_dot = cell(size(models,1),1);
 res.vx = [];
 res.delta = [];
 res.vy = [];
@@ -110,12 +112,9 @@ for m = 1:size(models,1)
     name = models{m,2};
     fprintf('\nEvaluating model: %s\n', name);
 
-    ey  = [];
     evy = [];
     epsi = [];
     er  = [];
-    edelta = [];
-    edelta_dot = [];
     vx_k = [];
     delta_k = [];
     vy_meas_k = [];
@@ -134,22 +133,21 @@ for m = 1:size(models,1)
 
         % Build model state at k from measured signals
         Xk = zeros(6, N-1);
-        Xk(1,:) = run.y_local(1:end-1);
+        Xk(1,:) = 0;
         Xk(2,:) = run.vy(1:end-1);
         Xk(3,:) = run.psi_local(1:end-1);
         Xk(4,:) = run.r(1:end-1);
         Xk(5,:) = run.delta(1:end-1);
-        Xk(6,:) = run.delta_dot(1:end-1);
+        Xk(6,:) = 0;
 
-        % Measured inputs
-        Uk = [vx(1:end-1),run.st(1:end-1)];
+        % Measured delta is held constant within each 20-ms transition.
+        % Setting legacy actuator state delta_dot=0 and command=delta puts
+        % that subsystem at equilibrium and removes it from vy/r prediction.
+        Uk = [vx(1:end-1), delta(1:end-1)];
 
-        y_next = run.y_local(2:end);
         vy_next = run.vy(2:end);
         psi_next = run.psi_local(2:end);
         r_next  = run.r(2:end);
-        delta_next = run.delta(2:end);
-        delta_dot_next = run.delta_dot(2:end);
 
         for k = 1:(N-1)
             if eval_cfg.suppress_model_prints
@@ -158,12 +156,9 @@ for m = 1:size(models,1)
                 x_next = modelFcn(Xk(:,k), Uk(k,:), Ts);
             end
 
-            ey(end+1,1)  = x_next(1) - y_next(k);
             evy(end+1,1) = x_next(2) - vy_next(k);
             epsi(end+1,1) = wrapAngle(x_next(3) - psi_next(k));
             er(end+1,1)  = x_next(4) - r_next(k);
-            edelta(end+1,1) = x_next(5) - delta_next(k);
-            edelta_dot(end+1,1) = x_next(6) - delta_dot_next(k);
             vx_k(end+1,1) = vx(k);
             delta_k(end+1,1) = delta(k);
             vy_meas_k(end+1,1) = run.vy(k);
@@ -172,12 +167,9 @@ for m = 1:size(models,1)
         end
     end
 
-    res.e_y{m} = ey;
     res.e_vy{m} = evy;
     res.e_psi{m} = epsi;
     res.e_r{m}  = er;
-    res.e_delta{m} = edelta;
-    res.e_delta_dot{m} = edelta_dot;
     if isempty(res.vx)
         res.vx = vx_k;
         res.delta = delta_k;
@@ -192,67 +184,46 @@ end
 stats = struct();
 stats.models = res.models;
 
-stats.rmse_y = zeros(size(models,1),1);
 stats.rmse_vy = zeros(size(models,1),1);
 stats.rmse_psi = zeros(size(models,1),1);
 stats.rmse_r  = zeros(size(models,1),1);
-stats.rmse_delta = zeros(size(models,1),1);
-stats.rmse_delta_dot = zeros(size(models,1),1);
 
-stats.mae_y = zeros(size(models,1),1);
 stats.mae_vy  = zeros(size(models,1),1);
 stats.mae_psi = zeros(size(models,1),1);
 stats.mae_r   = zeros(size(models,1),1);
-stats.mae_delta = zeros(size(models,1),1);
-stats.mae_delta_dot = zeros(size(models,1),1);
 
-stats.p95abs_y = zeros(size(models,1),1);
 stats.p95abs_vy = zeros(size(models,1),1);
 stats.p95abs_psi = zeros(size(models,1),1);
 stats.p95abs_r  = zeros(size(models,1),1);
-stats.p95abs_delta = zeros(size(models,1),1);
-stats.p95abs_delta_dot = zeros(size(models,1),1);
 
 for m = 1:size(models,1)
-    ey  = res.e_y{m};
     evy = res.e_vy{m};
     epsi = res.e_psi{m};
     er  = res.e_r{m};
-    edelta = res.e_delta{m};
-    edelta_dot = res.e_delta_dot{m};
 
-    stats.rmse_y(m) = sqrt(mean(ey.^2,'omitnan'));
     stats.rmse_vy(m) = sqrt(mean(evy.^2,'omitnan'));
     stats.rmse_psi(m) = sqrt(mean(epsi.^2,'omitnan'));
     stats.rmse_r(m)  = sqrt(mean(er.^2,'omitnan'));
-    stats.rmse_delta(m) = sqrt(mean(edelta.^2,'omitnan'));
-    stats.rmse_delta_dot(m) = sqrt(mean(edelta_dot.^2,'omitnan'));
 
-    stats.mae_y(m)  = mean(abs(ey),'omitnan');
     stats.mae_vy(m)  = mean(abs(evy),'omitnan');
     stats.mae_psi(m) = mean(abs(epsi),'omitnan');
     stats.mae_r(m)   = mean(abs(er),'omitnan');
-    stats.mae_delta(m) = mean(abs(edelta),'omitnan');
-    stats.mae_delta_dot(m) = mean(abs(edelta_dot),'omitnan');
 
-    stats.p95abs_y(m) = prctile(abs(ey),95);
     stats.p95abs_vy(m) = prctile(abs(evy),95);
     stats.p95abs_psi(m) = prctile(abs(epsi),95);
     stats.p95abs_r(m)  = prctile(abs(er),95);
-    stats.p95abs_delta(m) = prctile(abs(edelta),95);
-    stats.p95abs_delta_dot(m) = prctile(abs(edelta_dot),95);
 end
 
-T_rmse = table(string(stats.models), stats.rmse_vy, stats.rmse_r, stats.rmse_delta, ...
-    'VariableNames', {'model','rmse_vy','rmse_r','rmse_delta'});
+T_rmse = table(string(stats.models), stats.rmse_vy, stats.rmse_r, ...
+    'VariableNames', {'model','rmse_vy','rmse_r'});
 disp(T_rmse)
 
-T_mae = table(string(stats.models), stats.mae_vy, stats.mae_r, stats.mae_delta, ...
-    'VariableNames', {'model','mae_vy','mae_r','mae_delta'});
+T_mae = table(string(stats.models), stats.mae_vy, stats.mae_r, ...
+    'VariableNames', {'model','mae_vy','mae_r'});
 disp(T_mae)
 
-T_p95 = table(string(stats.models), stats.p95abs_vy, stats.p95abs_r, stats.p95abs_delta, ...
-    'VariableNames', {'model','p95abs_vy','p95abs_r','p95abs_delta'});
+T_p95 = table(string(stats.models), stats.p95abs_vy, stats.p95abs_r, ...
+    'VariableNames', {'model','p95abs_vy','p95abs_r'});
 disp(T_p95)
 
 % Residuals vs speed bins
@@ -297,7 +268,6 @@ stats.r_centers = r_centers;
 
 stats.rmse_vy_vs_vx = NaN(size(models,1), numel(vx_centers));
 stats.rmse_r_vs_vx  = NaN(size(models,1), numel(vx_centers));
-stats.rmse_delta_vs_vx  = NaN(size(models,1), numel(vx_centers));
 
 stats.rmse_vy_vs_vy = NaN(size(models,1), numel(vy_centers));
 stats.rmse_r_vs_vy  = NaN(size(models,1), numel(vy_centers));
@@ -307,7 +277,6 @@ stats.rmse_r_vs_r  = NaN(size(models,1), numel(r_centers));
 
 stats.rmse_vy_map = NaN(size(models,1), numel(delta_centers), numel(vx_centers));
 stats.rmse_r_map  = NaN(size(models,1), numel(delta_centers), numel(vx_centers));
-stats.rmse_delta_map  = NaN(size(models,1), numel(delta_centers), numel(vx_centers));
 
 vx_bin = discretize(vx, vx_edges);
 delta_bin = discretize(abs(delta), delta_abs_edges);
@@ -317,14 +286,12 @@ r_bin  = discretize(res.r(:), r_edges);
 for m = 1:size(models,1)
     evy = res.e_vy{m};
     er  = res.e_r{m};
-    edelta = res.e_delta{m};
 
     for b = 1:numel(vx_centers)
         mask = (vx_bin == b);
         if any(mask)
             stats.rmse_vy_vs_vx(m,b) = sqrt(mean(evy(mask).^2,'omitnan'));
             stats.rmse_r_vs_vx(m,b)  = sqrt(mean(er(mask).^2,'omitnan'));
-            stats.rmse_delta_vs_vx(m,b) = sqrt(mean(edelta(mask).^2,'omitnan'));
         end
     end
 
@@ -350,7 +317,6 @@ for m = 1:size(models,1)
             if any(mask)
                 stats.rmse_vy_map(m,bb_d,bb_vx) = sqrt(mean(evy(mask).^2,'omitnan'));
                 stats.rmse_r_map(m,bb_d,bb_vx)  = sqrt(mean(er(mask).^2,'omitnan'));
-                stats.rmse_delta_map(m,bb_d,bb_vx)  = sqrt(mean(edelta(mask).^2,'omitnan'));
             end
         end
     end
@@ -366,11 +332,11 @@ tl = tiledlayout(2,1,'TileSpacing','compact','Padding','compact');
 
 ax1 = nexttile(tl,1);
 plotErrorSummary(ax1, stats.models, stats.rmse_r, stats.mae_r, stats.p95abs_r, ...
-    'r error [rad/s]', 'Yaw rate');
+    model_colors, 'r error [rad/s]', 'Yaw rate');
 
 ax2 = nexttile(tl,2);
 plotErrorSummary(ax2, stats.models, stats.rmse_vy, stats.mae_vy, stats.p95abs_vy, ...
-    'v_y error [m/s]', 'Lateral velocity');
+    model_colors, 'v_y error [m/s]', 'Lateral velocity');
 
 
 % Residuals vs signals (vx, vy, r)
@@ -379,7 +345,9 @@ tl = tiledlayout(2,3,'TileSpacing','compact','Padding','compact');
 
 ax1 = nexttile(tl,1); hold on; grid on;
 for m = 1:size(models,1)
-    plot(stats.vx_centers, stats.rmse_vy_vs_vx(m,:), 'LineWidth', 1.4, 'DisplayName', stats.models{m});
+    plot(stats.vx_centers, stats.rmse_vy_vs_vx(m,:), ...
+        'Color', model_colors(m,:), 'LineWidth', 1.4, ...
+        'DisplayName', stats.models{m});
 end
 xlabel('v_x [m/s]'); ylabel('RMSE e_{vy} [m/s]');
 title('vy residual vs v_x');
@@ -387,7 +355,9 @@ legend('Location','best');
 
 ax2 = nexttile(tl,2); hold on; grid on;
 for m = 1:size(models,1)
-    plot(stats.vy_centers, stats.rmse_vy_vs_vy(m,:), 'LineWidth', 1.4, 'DisplayName', stats.models{m});
+    plot(stats.vy_centers, stats.rmse_vy_vs_vy(m,:), ...
+        'Color', model_colors(m,:), 'LineWidth', 1.4, ...
+        'DisplayName', stats.models{m});
 end
 xlabel('v_y [m/s]'); ylabel('RMSE e_{vy} [m/s]');
 title('vy residual vs v_y');
@@ -395,7 +365,9 @@ legend('Location','best');
 
 ax3 = nexttile(tl,3); hold on; grid on;
 for m = 1:size(models,1)
-    plot(stats.r_centers, stats.rmse_vy_vs_r(m,:), 'LineWidth', 1.4, 'DisplayName', stats.models{m});
+    plot(stats.r_centers, stats.rmse_vy_vs_r(m,:), ...
+        'Color', model_colors(m,:), 'LineWidth', 1.4, ...
+        'DisplayName', stats.models{m});
 end
 xlabel('r [rad/s]'); ylabel('RMSE e_{vy} [m/s]');
 title('vy residual vs r');
@@ -403,7 +375,9 @@ legend('Location','best');
 
 ax4 = nexttile(tl,4); hold on; grid on;
 for m = 1:size(models,1)
-    plot(stats.vx_centers, stats.rmse_r_vs_vx(m,:), 'LineWidth', 1.4, 'DisplayName', stats.models{m});
+    plot(stats.vx_centers, stats.rmse_r_vs_vx(m,:), ...
+        'Color', model_colors(m,:), 'LineWidth', 1.4, ...
+        'DisplayName', stats.models{m});
 end
 xlabel('v_x [m/s]'); ylabel('RMSE e_r [rad/s]');
 title('r residual vs v_x');
@@ -411,7 +385,9 @@ legend('Location','best');
 
 ax5 = nexttile(tl,5); hold on; grid on;
 for m = 1:size(models,1)
-    plot(stats.vy_centers, stats.rmse_r_vs_vy(m,:), 'LineWidth', 1.4, 'DisplayName', stats.models{m});
+    plot(stats.vy_centers, stats.rmse_r_vs_vy(m,:), ...
+        'Color', model_colors(m,:), 'LineWidth', 1.4, ...
+        'DisplayName', stats.models{m});
 end
 xlabel('v_y [m/s]'); ylabel('RMSE e_r [rad/s]');
 title('r residual vs v_y');
@@ -419,7 +395,9 @@ legend('Location','best');
 
 ax6 = nexttile(tl,6); hold on; grid on;
 for m = 1:size(models,1)
-    plot(stats.r_centers, stats.rmse_r_vs_r(m,:), 'LineWidth', 1.4, 'DisplayName', stats.models{m});
+    plot(stats.r_centers, stats.rmse_r_vs_r(m,:), ...
+        'Color', model_colors(m,:), 'LineWidth', 1.4, ...
+        'DisplayName', stats.models{m});
 end
 xlabel('r [rad/s]'); ylabel('RMSE e_r [rad/s]');
 title('r residual vs r');
@@ -435,11 +413,9 @@ idx_end = min(idx_start + horizon - 1, numel(run.vx));
 meas.t = run.t(idx_start:idx_end);
 in.t = run.t(idx_start:idx_end);
 
-in.st = run.st(idx_start:idx_end);
 in.vx = run.vx(idx_start:idx_end);
+in.delta = run.delta(idx_start:idx_end);
 
-meas.x = run.x(idx_start:idx_end);
-meas.y = run.y(idx_start:idx_end);
 meas.vx = run.vx(idx_start:idx_end);
 meas.vy = run.vy(idx_start:idx_end);
 meas.r = run.r(idx_start:idx_end);
@@ -460,25 +436,23 @@ for k = 1:size(models,1)
     sim_results{k} = simulateModel(modelFcn, in, init_state);
 end
 
-% Local frame for the selected window
-[y_local, psi_local] = localFrameFromXY(meas.x, meas.y, meas.r, meas.t);
+% Recorded planar body yaw relative to the start of this window.
+psi_local = unwrap(run.psi(idx_start:idx_end));
+psi_local = psi_local - psi_local(1);
 
 meas_local.t   = meas.t - meas.t(1);
-meas_local.y   = y_local;
 meas_local.psi = psi_local;
 meas_local.vy  = meas.vy(:);
 meas_local.r   = meas.r(:);
 
 figure('Name','Propagation (Local Frame)','Position',[100 100 1200 800]);
-tl = tiledlayout(5,1,'TileSpacing','compact','Padding','compact');
+tl = tiledlayout(4,1,'TileSpacing','compact','Padding','compact');
 
-axY     = nexttile(tl,1); hold on; grid on; ylabel('y_{local} [m]'); title('Lateral position');
-axDelta = nexttile(tl,2); hold on; grid on; ylabel('\delta [rad]'); title('Wheel angle');
-axVy    = nexttile(tl,3); hold on; grid on; ylabel('v_y [m/s]'); title('Lateral velocity');
-axR     = nexttile(tl,4); hold on; grid on; ylabel('r [rad/s]'); title('Yaw rate');
-axPsi   = nexttile(tl,5); hold on; grid on; ylabel('\psi_{local} [rad]'); title('Heading'); xlabel('t [s]');
+axDelta = nexttile(tl,1); hold on; grid on; ylabel('\delta [rad]'); title('Measured wheel-angle input');
+axVy    = nexttile(tl,2); hold on; grid on; ylabel('v_y [m/s]'); title('Lateral velocity');
+axR     = nexttile(tl,3); hold on; grid on; ylabel('r [rad/s]'); title('Yaw rate');
+axPsi   = nexttile(tl,4); hold on; grid on; ylabel('\psi_{local} [rad]'); title('Measured body heading'); xlabel('t [s]');
 
-plot(axY,     meas_local.t, meas_local.y,   'w', 'LineWidth', 2, 'DisplayName','Measured');
 plot(axDelta, meas_local.t, meas.delta(:),  'w', 'LineWidth', 2, 'DisplayName','Measured');
 plot(axVy,  meas_local.t, meas_local.vy,  'w', 'LineWidth', 2, 'DisplayName','Measured');
 plot(axR,   meas_local.t, meas_local.r,   'w', 'LineWidth', 2, 'DisplayName','Measured');
@@ -488,27 +462,25 @@ for k = 1:size(models,1)
     name = models{k,2};
     states = sim_results{k};
 
-    y_sim   = arrayfun(@(s) s.y,   states(:));
-    delta_sim = arrayfun(@(s) s.delta, states(:));
     vy_sim  = arrayfun(@(s) s.vy,  states(:));
     r_sim   = arrayfun(@(s) s.r,   states(:));
     psi_sim = arrayfun(@(s) s.psi, states(:));
 
     t_sim = meas_local.t;
-    plot(axY,     t_sim, y_sim,     'LineWidth', 1.4, 'DisplayName', name);
-    plot(axDelta, t_sim, delta_sim, 'LineWidth', 1.4, 'DisplayName', name);
-    plot(axVy,  t_sim, vy_sim,  'LineWidth', 1.4, 'DisplayName', name);
-    plot(axR,   t_sim, r_sim,   'LineWidth', 1.4, 'DisplayName', name);
-    plot(axPsi, t_sim, psi_sim, 'LineWidth', 1.4, 'DisplayName', name);
+    color = model_colors(k,:);
+    plot(axVy, t_sim, vy_sim, 'Color', color, ...
+        'LineWidth', 1.4, 'DisplayName', name);
+    plot(axR, t_sim, r_sim, 'Color', color, ...
+        'LineWidth', 1.4, 'DisplayName', name);
+    plot(axPsi, t_sim, psi_sim, 'Color', color, ...
+        'LineWidth', 1.4, 'DisplayName', name);
 end
 
-legend(axY,'Location','best');
-legend(axDelta,'Location','best');
 legend(axVy,'Location','best');
 legend(axR,'Location','best');
 legend(axPsi,'Location','best');
 
-linkaxes([axY axDelta axVy axR axPsi],'x');
+linkaxes([axDelta axVy axR axPsi],'x');
 %% 
 
 
@@ -525,8 +497,13 @@ function states = simulateModel(modelFcn, inputs, init_state)
     states(N,1) = init_state;
     
     for k = 1:N
-        % Get input
-        u = [inputs.vx(k),inputs.st(k)];
+        % Treat measured steering position as a zero-order-held exogenous
+        % input. The legacy actuator states are placed at equilibrium on
+        % every step, so only the recursively propagated vehicle states
+        % contribute to the comparison.
+        x(5) = inputs.delta(k);
+        x(6) = 0;
+        u = [inputs.vx(k), inputs.delta(k)];
     
         % Log state
         states(k).y         = x(1);
@@ -540,50 +517,45 @@ function states = simulateModel(modelFcn, inputs, init_state)
     end
 end
 
-function [y_local, psi_local] = localFrameFromXY(xg, yg, r, t)
-% Heading from trajectory (robust for sim logs). Fallback to yaw-rate if needed.
-xg = xg(:); yg = yg(:);
-if numel(xg) < 2
-    y_local = zeros(size(xg));
-    psi_local = zeros(size(xg));
-    return
-end
-dx = gradient(xg);
-dy = gradient(yg);
-
-psi_traj = unwrap(atan2(dy, dx));
-
-if all(abs(dx) < 1e-6) && all(abs(dy) < 1e-6)
-    dt_vec = [diff(t(:)); mean(diff(t(:)))];
-    psi_traj = unwrap(cumsum(r(:) .* dt_vec));
-end
-
-psi0 = psi_traj(1);
-x0 = xg(1); y0 = yg(1);
-dX = xg - x0;
-dY = yg - y0;
-
-y_local = -dX*sin(psi0) + dY*cos(psi0);
-psi_local = unwrap(psi_traj - psi0);
-end
-
 function a = wrapAngle(a)
 a = mod(a + pi, 2*pi) - pi;
 end
 
-function plotErrorSummary(ax, modelNames, rmse, mae, p95abs, ylab, ttl)
-axes(ax);
-hold on; grid on;
+function plotErrorSummary(ax, modelNames, rmse, mae, p95abs, ...
+    modelColors, ylab, ttl)
+hold(ax, 'on');
+grid(ax, 'on');
 
 modelNames = string(modelNames);
-x = categorical(modelNames);
-bar(x, rmse, 'FaceAlpha', 0.9);
-plot(x, mae, 'o', 'Color', 'w', 'MarkerFaceColor','w', 'MarkerEdgeColor','w', ...
-    'LineWidth', 1.2, 'MarkerSize', 7, 'DisplayName','MAE');
-plot(x, p95abs, 'x', 'Color', [1 0.9 0], 'LineWidth', 1.8, 'MarkerSize', 8, ...
-    'DisplayName','P95(|e|)');
+x = 1:numel(modelNames);
+rmse_bars = bar(ax, x, rmse, 'FaceColor', 'flat', 'FaceAlpha', 0.9, ...
+    'DisplayName', 'RMSE');
+rmse_bars.CData = modelColors;
 
-ylabel(ylab);
-title(ttl);
-legend('RMSE','MAE','P95(|e|)','Location','best');
+for model_idx = 1:numel(modelNames)
+    plot(ax, x(model_idx), mae(model_idx), 'o', ...
+        'Color', modelColors(model_idx,:), ...
+        'MarkerFaceColor', modelColors(model_idx,:), ...
+        'MarkerEdgeColor', 'w', 'LineWidth', 1.2, ...
+        'MarkerSize', 7, 'HandleVisibility', 'off');
+    plot(ax, x(model_idx), p95abs(model_idx), 'x', ...
+        'Color', modelColors(model_idx,:), 'LineWidth', 2.0, ...
+        'MarkerSize', 9, 'HandleVisibility', 'off');
+end
+
+% Metric legend: model identity is encoded by bar/marker colour and named
+% on the x-axis; marker shape distinguishes MAE from P95.
+mae_key = plot(ax, nan, nan, 'o', 'Color', [0.8 0.8 0.8], ...
+    'MarkerFaceColor', [0.8 0.8 0.8], 'MarkerEdgeColor', 'w', ...
+    'LineWidth', 1.2, 'MarkerSize', 7, 'DisplayName', 'MAE');
+p95_key = plot(ax, nan, nan, 'x', 'Color', [0.8 0.8 0.8], ...
+    'LineWidth', 2.0, 'MarkerSize', 9, 'DisplayName', 'P95(|e|)');
+
+xticks(ax, x);
+xticklabels(ax, modelNames);
+xtickangle(ax, 0);
+ylabel(ax, ylab);
+title(ax, ttl);
+legend(ax, [rmse_bars, mae_key, p95_key], ...
+    {'RMSE','MAE','P95(|e|)'}, 'Location', 'best');
 end

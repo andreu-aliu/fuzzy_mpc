@@ -22,7 +22,7 @@ end
 
 source = load(dataset_file, 'datasets', 'meta');
 Ts = source.meta.Ts;
-runs = buildEvaluationRuns(source.datasets, Ts);
+runs = buildEvaluationRuns(source.datasets);
 
 %% Frozen versus adaptive one-step evaluation
 
@@ -81,6 +81,8 @@ adaptive_states(:, 1) = run.X(:, indices(1));
 eefig_reset();
 for q = 1:numel(indices)-1
     k = indices(q);
+    frozen_states(5, q) = run.X(5, k);
+    frozen_states(6, q) = 0;
     frozen_states(:, q + 1) = eefig( ...
         frozen_states(:, q), run.U(:, k), Ts);
 end
@@ -90,7 +92,12 @@ adaptive_created = 0;
 for q = 1:numel(indices)-1
     k = indices(q);
 
-    % Propagate first, without access to the next measurement.
+    % Measured steering is an exogenous vehicle-dynamics input. Place the
+    % legacy actuator states at equilibrium so they cannot affect vy/r.
+    adaptive_states(5, q) = run.X(5, k);
+    adaptive_states(6, q) = 0;
+
+    % Propagate first, without access to the next lateral measurement.
     adaptive_states(:, q + 1) = eefig( ...
         adaptive_states(:, q), run.U(:, k), Ts);
 
@@ -146,7 +153,7 @@ ylabel('r [rad/s]');
 legend('Location', 'best');
 grid on;
 
-function runs = buildEvaluationRuns(datasets, Ts)
+function runs = buildEvaluationRuns(datasets)
 runs = repmat(struct('X',[],'U',[],'N',0), numel(datasets), 1);
 for run_idx = 1:numel(datasets)
     data = datasets(run_idx).data;
@@ -157,25 +164,21 @@ for run_idx = 1:numel(datasets)
     fin = min(fin, numel(data.vx));
     idx = ini:fin;
 
-    [y_local, psi_local] = localFrame(data.x(idx), data.y(idx));
+    if ~isfield(data, 'psi')
+        error(['Evaluation run %d has no measured heading. Regenerate the ' ...
+            'prepared datasets with the current prepare_datasets.m.'], run_idx);
+    end
+    psi_local = unwrap(data.psi(idx));
+    psi_local = psi_local - psi_local(1);
+    y_local = zeros(size(psi_local));
     delta = data.delta(idx);
-    delta_dot = gradient(delta, Ts);
     runs(run_idx).X = [y_local'; data.vy(idx)'; psi_local'; ...
-        data.r(idx)'; delta'; delta_dot'];
-    runs(run_idx).U = [data.vx(idx)'; data.st(idx)'];
+        data.r(idx)'; delta'; zeros(size(delta'))];
+    % U(2)=delta neutralizes the legacy actuator subsystem. EEFig itself
+    % uses measured X(5) as its lateral-dynamics steering input.
+    runs(run_idx).U = [data.vx(idx)'; delta'];
     runs(run_idx).N = numel(idx);
 end
-end
-
-function [y_local, psi_local] = localFrame(x, y)
-x = x(:);
-y = y(:);
-dx = gradient(x);
-dy = gradient(y);
-psi_global = unwrap(atan2(dy, dx));
-psi0 = psi_global(1);
-y_local = -(x - x(1)) * sin(psi0) + (y - y(1)) * cos(psi0);
-psi_local = unwrap(psi_global - psi0);
 end
 
 function result = errorTable(error_a, error_b, name_a, name_b)

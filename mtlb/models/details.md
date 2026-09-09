@@ -822,6 +822,15 @@ offline model remain unchanged.
 
 ## Comparison and interpretation notes
 
+- The model APIs retain steering-actuator states for eventual MPC use, but the
+  identification comparisons isolate vehicle dynamics. `compare_models.m` and
+  `eefig_adaptation_analysis.m` impose measured $\delta(k)$ at every step and
+  place the legacy actuator subsystem at equilibrium; requested steering and
+  predicted steering states do not contribute to the reported $v_y/r$ errors.
+- Measured body yaw is read from `/as/c/state.odom.heading`, projected to a
+  wrapped planar angle, unwrapped before interpolation, and used for $\psi$.
+  Trajectory course computed from SLAM $x/y$ is not used as vehicle heading,
+  and unreliable SLAM position is not scored in the dynamics comparison.
 - The nonlinear bicycle and double-track models are propagation models, but
   they do not currently expose an analytic local linearization for MPC.
 - `ltv`, `anfis_delta`, `anfis_direct`, `anfis_dot`, `eefig`, and the matrix

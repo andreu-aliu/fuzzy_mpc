@@ -22,6 +22,7 @@ Ns = numel(stateMsgs);
 
 x  = zeros(Ns,1);
 y  = zeros(Ns,1);
+psi = zeros(Ns,1);
 vx = zeros(Ns,1);
 vy = zeros(Ns,1);
 r  = zeros(Ns,1);
@@ -33,6 +34,11 @@ for i = 1:Ns
 
     x(i)  = msg.odom.position.x;
     y(i)  = msg.odom.position.y;
+    % odom.heading is the scalar planar yaw used by the live controllers.
+    % Project it onto the wrapped 2-D angle before unwrapping the sequence;
+    % this avoids interpolating across the +/-pi discontinuity.
+    psi(i) = atan2(sin(double(msg.odom.heading)), ...
+        cos(double(msg.odom.heading)));
     vx(i) = msg.odom.velocity.x;
     vy(i) = msg.odom.velocity.y;
     r(i)  = msg.odom.velocity.w;
@@ -124,6 +130,7 @@ t_tv       = t_tv - t0;
 [t_state_unique, idx_state] = unique(t_state, 'stable');
 x_unique = x(idx_state);
 y_unique = y(idx_state);
+psi_unique = unwrap(psi(idx_state));
 vx_unique = vx(idx_state);
 vy_unique = vy(idx_state);
 r_unique = r(idx_state);
@@ -152,6 +159,7 @@ t_uniform = (t_start:Ts:t_end)';
 
 x_100  = interp1(t_state_unique, x_unique,  t_uniform, 'linear');
 y_100  = interp1(t_state_unique, y_unique,  t_uniform, 'linear');
+psi_100 = interp1(t_state_unique, psi_unique, t_uniform, 'linear');
 vx_100 = interp1(t_state_unique, vx_unique, t_uniform, 'linear');
 vy_100 = interp1(t_state_unique, vy_unique, t_uniform, 'linear');
 r_100  = interp1(t_state_unique, r_unique,  t_uniform, 'linear');
@@ -185,6 +193,7 @@ t_uniform = t_uniform - t_uniform(1);
 
 x_100  = x_100(keepStart:keepEnd);
 y_100  = y_100(keepStart:keepEnd);
+psi_100 = psi_100(keepStart:keepEnd);
 vx_100 = vx_100(keepStart:keepEnd);
 vy_100 = vy_100(keepStart:keepEnd);
 r_100  = r_100(keepStart:keepEnd);
@@ -206,6 +215,7 @@ data.time = t_uniform;
 
 data.x  = x_100;
 data.y  = y_100;
+data.psi = psi_100;
 data.vx = vx_100;
 data.vy = vy_100;
 data.r  = r_100;
@@ -227,6 +237,7 @@ if want_audit
     audit.raw.state.time = t_state_unique - trim_time_origin;
     audit.raw.state.x = x_unique;
     audit.raw.state.y = y_unique;
+    audit.raw.state.psi = psi_unique;
     audit.raw.state.vx = vx_unique;
     audit.raw.state.vy = vy_unique;
     audit.raw.state.r = r_unique;

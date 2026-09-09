@@ -160,7 +160,7 @@ This experiment compares four cases on held-out runs:
 - Frozen open-loop propagation.
 - Open-loop propagation while adapting from arriving measurements.
 
-For adaptive one-step evaluation, the order is always prediction, scoring, and then learning. For adaptive propagation, the propagated state is not reset to the measured state after an update.
+For adaptive one-step evaluation, the order is always prediction, scoring, and then learning. For adaptive propagation, the propagated `vy` and `r` states are not reset to their measurements after an update. Measured steering angle is imposed at every step as an exogenous vehicle-dynamics input; steering-command and actuator prediction are deliberately excluded from this thesis comparison.
 
 The script resets the saved offline model before each independent experiment. Its configuration also selects the evaluation run, start sample, and propagation horizon.
 
