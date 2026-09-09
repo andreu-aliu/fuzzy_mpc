@@ -138,9 +138,29 @@ late_rmse = sqrt(mean(prediction_error(end-24:end).^2));
 verifyLessThan(testCase, late_rmse, 0.1 * early_rmse);
 end
 
+function testRunBoundaryResetPreservesLearnedModel(testCase)
+learner = EEFIGLearning(1, 1, struct('phi', 3, 'min_initial_samples', 3));
+learner.updatePair([0; 0], 0, 'offline');
+learner.updatePair([0.1; 0.2], 0.1, 'offline');
+learner.updatePair([0.2; 0.1], 0.2, 'offline');
+
+granule = learner.granules{1};
+theta_before = granule.Theta;
+learner.startNewRun();
+
+verifyEqual(testCase, learner.NG, 1);
+verifyEqual(testCase, learner.granules{1}.Theta, theta_before);
+verifyEmpty(testCase, learner.zetaWindow);
+verifyEmpty(testCase, learner.xNextWindow);
+verifyFalse(testCase, learner.tracker_initialized);
+verifyEqual(testCase, learner.anomaly_counter, 0);
+end
+
 function testPaperDefaults(testCase)
 learner = EEFIGLearning(2, 1, struct());
 verifyEqual(testCase, learner.n_anomaly_max, 5);
+verifyEqual(testCase, learner.confidence, 0.999);
+verifyEqual(testCase, learner.c_separation, 0.5);
 verifyEqual(testCase, learner.rls_forgetting, 0.99);
 verifyEqual(testCase, learner.rls_mode, 'global');
 verifyTrue(testCase, learner.use_pjg_quality_check);

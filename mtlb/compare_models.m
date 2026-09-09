@@ -10,6 +10,7 @@ models = {
     @anfis_delta, 'ANFIS delta';
     @anfis_dot, 'ANFIS derivative';
     @anfis_residuals, 'ANFIS LTV residual';
+    @eefig, 'EEFIG offline';
     @nonlinear_bicycle, 'Nonlinear bicycle';
     @nonlinear_double_track, 'Nonlinear double track';
     @ltv, 'LTV MPC';

@@ -19,7 +19,7 @@ executes, not only the intended model architecture.
 | `anfis_direct` | Data-driven, local affine | Learns next lateral velocity and yaw rate directly | Comparison candidate and MPC-ready |
 | `anfis_dot` | Data-driven, local affine | Learns lateral-velocity and yaw-rate derivatives | Comparison candidate and MPC-ready |
 | `anfis_residuals` | Hybrid physics/data-driven | Learns the one-step error of `ltv` | Comparison candidate and MPC-ready |
-| `EEFIGLearning` / `TSGranule` | Data-driven, evolving TS fuzzy | Online ellipsoidal granules with local linear consequents | Implemented learning core; vehicle wrapper pending |
+| `eefig` | Data-driven, evolving TS fuzzy | Online ellipsoidal granules with local linear consequents | Comparison candidate, online-adaptive and MPC-ready |
 
 `anfis_residuals` and `anfis_residuals_2` use the same trained residual model.
 The first evaluates the nonlinear ANFIS output directly; the second uses its
@@ -718,23 +718,115 @@ $$
 Granule creation/windowed LS and ordinary RLS are mutually exclusive during
 one update. Defaults matching the paper's case study are
 $\bar n_a=5$, $\eta=0.99$, $P_0=10^5I$, $\lambda=3$, and $\iota=0.3$.
+Ellipsoidal admission uses the $99.9\%$ inverse chi-square threshold used by
+the reference EEFIG implementation. The vehicle trainer uses $c=0.5$ for
+granule separation. On the current real training/evaluation split, a sweep of
+$c\in\{0.25,0.5,1.0\}$ produced respectively 21, 13, and 2 granules; $c=0.5$
+was selected as the balance between held-out coverage and model complexity.
 Because this project uses signed vehicle states, $\beta_S=-\infty$ by default;
 set $\beta_S=0$ only when premise variables have first been mapped to a
 non-negative domain.
 
-The learning core is model-agnostic. It is not yet registered in
-`compare_models.m`, and it does not yet define which lateral vehicle states,
-inputs, and normalization transform should form $\zeta_k$. That vehicle-level
-wrapper must be fixed before the EEFIG model can be compared fairly or inserted
-into the MPC.
+### Lateral-vehicle realization
+
+The vehicle model learns
+
+$$
+x_k^{\mathrm{lat}}=
+\begin{bmatrix}v_y(k)&r(k)\end{bmatrix}^{\mathsf T},
+\qquad
+u_k^{\mathrm{lat}}=
+\begin{bmatrix}v_x(k)&\delta(k)\end{bmatrix}^{\mathsf T},
+$$
+
+with direct next-state target
+
+$$
+x_{k+1}^{\mathrm{lat}}=
+\begin{bmatrix}v_y(k+1)&r(k+1)\end{bmatrix}^{\mathsf T}.
+$$
+
+`prepare_eefig_data.m` constructs transitions independently inside each run,
+so no target ever connects the end of one rosbag to the beginning of another.
+`startNewRun()` clears the moving regression window, auxiliary granule, and
+anomaly state while preserving all learned granules and consequents. Offline
+training uses every selected training transition in dataset order. The held-out
+evaluation split is used only for frozen predictions and diagnostics.
+
+Training-only scale factors are applied without subtracting a mean:
+
+$$
+x_n=D_x^{-1}x^{\mathrm{lat}},\qquad
+u_n=D_u^{-1}u^{\mathrm{lat}}.
+$$
+
+Scale-only normalization preserves the origin because the local consequents
+do not have an affine intercept. If a local normalized model is
+
+$$
+x_{n,k+1}=A_nx_{n,k}+B_nu_{n,k},
+$$
+
+its physical-coordinate matrices are
+
+$$
+A_{\mathrm{lat}}=D_xA_nD_x^{-1},\qquad
+B_{\mathrm{lat}}=D_xB_nD_u^{-1}.
+$$
+
+The learned model is discrete at the dataset sampling interval
+$T_{s,\mathrm{train}}$. For a runtime interval $T_s$, the wrapper uses
+
+$$
+s_T=\frac{T_s}{T_{s,\mathrm{train}}},\qquad
+A_{\mathrm{lat}}(T_s)=I+s_T
+(A_{\mathrm{lat}}(T_{s,\mathrm{train}})-I),
+$$
+
+$$
+B_{\mathrm{lat}}(T_s)=s_TB_{\mathrm{lat}}(T_{s,\mathrm{train}}).
+$$
+
+In the six-state affine model returned by `eefig_matrix.m`, the two learned
+rows are embedded as
+
+$$
+\begin{bmatrix}v_y(k+1)\\r(k+1)\end{bmatrix}
+=A_{\mathrm{lat}}
+\begin{bmatrix}v_y(k)\\r(k)\end{bmatrix}
++b_{v_x}v_x(k)+b_\delta\delta(k).
+$$
+
+Thus, $b_\delta$ is inserted in column 5 of the six-state $A$ matrix and
+$b_{v_x}v_x$ becomes the lateral part of the affine vector $C$. Neither
+$v_x$ nor measured $\delta$ is treated as an MPC decision. The only decision
+input remains requested steering $u_\delta$, acting through the shared
+second-order steering actuator. Kinematic rows for $y$ and $\psi$ are the same
+as in the other models.
+
+`eefig.m` is the frozen model registered in `compare_models.m`.
+`eefig_online_update.m` is deliberately separate and must be called only after
+the next measured state is available. `eefig_reset.m` discards all evaluation-
+time adaptation and reloads the saved offline artifact. The script
+`eefig_adaptation_analysis.m` evaluates both frozen and predict-then-update
+one-step behavior and both frozen and continuously adaptive propagation,
+reloading the identical offline baseline before each independent run.
+
+The generic learner retains the paper's shared-$P_k$ RLS as its default. The
+trained vehicle model explicitly uses one $P_k^i$ per granule with
+$P_0^i=10I$. On the current raw held-out runs, shared $P_0=10^5I$ generated
+large switching transients, whereas per-granule $P_0=10I$ improved adaptive
+RMSE over the frozen model for both learned states. This project-specific
+choice changes only online consequent adaptation; antecedent evolution and the
+offline model remain unchanged.
 
 ## Comparison and interpretation notes
 
 - The nonlinear bicycle and double-track models are propagation models, but
   they do not currently expose an analytic local linearization for MPC.
-- `ltv`, `anfis_delta`, `anfis_direct`, `anfis_dot`, and the matrix residual
-  implementation expose $A$, $B$, and $C$ in the form required by the present
-  linear MPC.
+- `ltv`, `anfis_delta`, `anfis_direct`, `anfis_dot`, `eefig`, and the matrix
+  residual implementation expose $A$, $B$, and $C$ in the form required by the
+  present linear MPC.
 - ANFIS models must be retrained after changing their feature vector, training
   targets, sample time, preprocessing, or dataset split. Their generated `.mat`
   files are part of the model definition even though the source equations are

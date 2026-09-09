@@ -106,7 +106,8 @@ classdef TSGranule < handle
             obj.A = obj.Theta(:, 1:obj.nx);
             obj.B = obj.Theta(:, obj.nx+1:end);
 
-            obj.P_rls = eye(obj.nzeta) * 1e5;
+            rls_P0 = getFieldOrDefault(params, 'rls_P0', 1e5);
+            obj.P_rls = eye(obj.nzeta) * rls_P0;
         end
 
         function M = mahalanobis(obj, zeta)

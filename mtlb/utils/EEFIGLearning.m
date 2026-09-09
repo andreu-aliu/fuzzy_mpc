@@ -105,7 +105,7 @@ classdef EEFIGLearning < handle
             obj.membershipMass = zeros(0,1);
             obj.performanceIndex = zeros(0,1);
 
-            obj.confidence = getFieldOrDefault(params, 'confidence', 0.95);
+            obj.confidence = getFieldOrDefault(params, 'confidence', 0.999);
             obj.epsilon = getFieldOrDefault(params, 'epsilon', chi2inv(obj.confidence, obj.nzeta));
             obj.membership_update_threshold = getFieldOrDefault(params, 'membership_update_threshold', 1e-6);
             obj.use_pjg_quality_check = getFieldOrDefault(params, 'use_pjg_quality_check', true);
@@ -122,12 +122,14 @@ classdef EEFIGLearning < handle
             obj.tracker_initialized = false;
             obj.tracker_forgetting = getFieldOrDefault(params, 'tracker_forgetting', 0.99);
             obj.tracker_effective_N = getFieldOrDefault(params, 'tracker_effective_N', 200);
-            obj.c_separation = getFieldOrDefault(params, 'c_separation', 2.0);
+            obj.c_separation = getFieldOrDefault(params, 'c_separation', 0.5);
             obj.use_c_separation = getFieldOrDefault(params, 'use_c_separation', true);
 
             obj.rls_forgetting = getFieldOrDefault(params, 'rls_forgetting', 0.99);
             obj.rls_mode = getFieldOrDefault(params, 'rls_mode', 'global');
-            obj.global_P = getFieldOrDefault(params, 'global_P', 1e5 * eye(obj.nzeta));
+            rls_P0 = getFieldOrDefault(params, 'rls_P0', 1e5);
+            obj.global_P = getFieldOrDefault(params, 'global_P', ...
+                rls_P0 * eye(obj.nzeta));
             obj.global_K = zeros(obj.nzeta, 1);
 
             obj.zetaWindow = zeros(obj.nzeta, 0);
@@ -251,7 +253,8 @@ classdef EEFIGLearning < handle
                     obj.updateConsequentOnline(status.active_idx, zeta, x_next);
                 end
             elseif strcmpi(mode, 'offline')
-                if ~created_new_granule
+                if ~created_new_granule && ...
+                        size(obj.zetaWindow, 2) >= obj.min_initial_samples
                     % Equation (24): batch windowed least squares on the
                     % moving phi-sample window for the active granule.
                     obj.fitConsequentWLS(status.active_idx, obj.zetaWindow, obj.xNextWindow);
@@ -314,6 +317,23 @@ classdef EEFIGLearning < handle
 
         end
 
+        function startNewRun(obj)
+            %STARTNEWRUN Reset transient stream memory at a run boundary.
+            %
+            % Learned granules, local consequents, PJG evidence and the
+            % global RLS matrix are preserved. Only state that assumes
+            % temporal continuity is cleared, preventing unrelated rosbag
+            % endpoints from sharing an auxiliary/WLS window or anomaly run.
+
+            obj.zetaWindow = zeros(obj.nzeta, 0);
+            obj.xNextWindow = zeros(obj.nx, 0);
+            obj.anomaly_counter = 0;
+            obj.clearAnomalyBuffers();
+            obj.tracker_nu = zeros(obj.nzeta, 1);
+            obj.tracker_C = eye(obj.nzeta);
+            obj.tracker_initialized = false;
+        end
+
         function [Abar, Bbar, g] = instantiateAB(obj, zeta)
             %INSTANTIATEAB Compute the global TS matrices Abar(zeta), Bbar(zeta).
             %
@@ -367,7 +387,16 @@ classdef EEFIGLearning < handle
 
             xi_sum = sum(xi);
             if xi_sum <= obj.regularization || all(~isfinite(xi))
-                g = ones(obj.NG, 1) / obj.NG;
+                % All exponential memberships can underflow far outside the
+                % learned domain. Select the nearest ellipsoid instead of
+                % blending unrelated local models uniformly.
+                distances = inf(obj.NG, 1);
+                for q = 1:obj.NG
+                    distances(q) = obj.granules{q}.mahalanobis(zeta);
+                end
+                [~, nearest] = min(distances);
+                g = zeros(obj.NG, 1);
+                g(nearest) = 1;
             else
                 g = xi / xi_sum;
             end
@@ -674,6 +703,10 @@ classdef EEFIGLearning < handle
             % This implements the two creation conditions in Section 2.2.
 
             create = false;
+
+            if size(obj.zetaWindow, 2) < obj.min_initial_samples
+                return;
+            end
 
             if obj.anomaly_counter <= obj.n_anomaly_max
                 return;
