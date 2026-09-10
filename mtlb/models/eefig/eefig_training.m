@@ -89,6 +89,11 @@ training_fit = evaluateFrozen(learner, prepared.training_runs, ...
 evaluation = evaluateFrozen(learner, prepared.evaluation_runs, ...
     prepared.scale_x, "Held-out evaluation");
 
+% The saved artifact is a trained prior, not a continuation of the final
+% training run. Clear only transient windows/anomaly state before saving;
+% learned granules and consequents are preserved.
+learner.startNewRun();
+
 %% Store the offline model and reproducibility metadata
 
 eefig_model = struct();

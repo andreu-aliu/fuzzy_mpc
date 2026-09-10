@@ -23,15 +23,21 @@ Cr = 2.0 * 1.2705 * 10.5507 * 1281.5;
 wn = 16.0;
 zeta = 0.5;
 
-% Avoid division by zero / bad conditioning at very low speed
-vx_eff = max(vx, 1.0);
+% The dynamic bicycle equations are not valid close to standstill, and their
+% 1/vx terms make forward Euler unstable at this sample time below about
+% 3 m/s. Use a positive low-speed scheduling floor for the lateral dynamics.
+% Measured vx is still used by the global-position kinematics below.
+min_dynamic_speed = 3.0;
+vx_dynamic = max(vx, min_dynamic_speed);
 
 % Standard small-slip bicycle dynamics with axle cornering stiffnesses.
 % y_dot is affine-linearized exactly about the predicted [vy,psi].
 A = [0, cos(psi), vx*cos(psi)-vy*sin(psi), 0, 0, 0;
-     0, -(Cf+Cr)/(m*vx_eff), 0, (Cr*lr-Cf*lf)/(m*vx_eff)-vx, Cf/m, 0;
+     0, -(Cf+Cr)/(m*vx_dynamic), 0, ...
+        (Cr*lr-Cf*lf)/(m*vx_dynamic)-vx_dynamic, Cf/m, 0;
      0, 0, 0, 1, 0, 0;
-     0, (Cr*lr-Cf*lf)/(Iz*vx_eff), 0, -(Cf*lf^2+Cr*lr^2)/(Iz*vx_eff), Cf*lf/Iz, 0;
+     0, (Cr*lr-Cf*lf)/(Iz*vx_dynamic), 0, ...
+        -(Cf*lf^2+Cr*lr^2)/(Iz*vx_dynamic), Cf*lf/Iz, 0;
      0, 0, 0, 0, 0, 1;
      0, 0, 0, 0, -wn*wn, -2*zeta*wn];
 B = [0;0;0;0;0;wn*wn];

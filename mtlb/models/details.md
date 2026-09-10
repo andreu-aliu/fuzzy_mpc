@@ -4,6 +4,10 @@ This document is the mathematical reference for every model implemented in
 `mtlb/models`. It describes the equations that the MATLAB code currently
 executes, not only the intended model architecture.
 
+Related documentation: [`../data/details.md`](../data/details.md) describes
+the datasets and [`../details.md`](../details.md) describes the held-out model
+comparison procedure.
+
 > **Maintenance rule:** any change to a model equation, state, input, parameter,
 > numerical limit, discretization, training target, or linearization must update
 > this document in the same change.
@@ -106,21 +110,30 @@ $B_f=B_r=10.5507$, $C_f^{\mathrm{tyre}}=C_r^{\mathrm{tyre}}=1.2705$,
 $D_f^{\mathrm{tyre}}=1104\ \mathrm N$, and
 $D_r^{\mathrm{tyre}}=1281.5\ \mathrm N$.
 
-With $v_{x,e}=\max(v_x,1\ \mathrm{m/s})$, the lateral equations are
+The forward-Euler implementation uses the low-speed scheduling clamp
 
 $$
-\dot v_y=-\frac{C_f+C_r}{m v_{x,e}}v_y
-+\left(\frac{C_r l_r-C_f l_f}{m v_{x,e}}-v_x\right)r
+v_{x,d}=\max(v_x,3\ \mathrm{m/s}).
+$$
+
+The model does not support reverse-driving dynamics, so negative and small
+positive measurements use the same positive floor. The lateral equations are
+
+$$
+\dot v_y=-\frac{C_f+C_r}{m v_{x,d}}v_y
++\left(\frac{C_r l_r-C_f l_f}{m v_{x,d}}-v_{x,d}\right)r
 +\frac{C_f}{m}\delta,
 $$
 
 $$
-\dot r=\frac{C_r l_r-C_f l_f}{I_z v_{x,e}}v_y
--\frac{C_f l_f^2+C_r l_r^2}{I_z v_{x,e}}r
+\dot r=\frac{C_r l_r-C_f l_f}{I_z v_{x,d}}v_y
+-\frac{C_f l_f^2+C_r l_r^2}{I_z v_{x,d}}r
 +\frac{C_f l_f}{I_z}\delta.
 $$
 
-The $-v_xr$ term is the body-frame Coriolis contribution. Nominal parameters
+The $-v_{x,d}r$ term is the body-frame Coriolis contribution under this
+low-speed approximation. Measured $v_x$ remains in the global $y$ kinematics;
+only the lateral dynamic scheduling value is clamped. Nominal parameters
 are $m=215\ \mathrm{kg}$, $I_z=188\ \mathrm{kg\,m^2}$, and
 $l_f=l_r=0.765\ \mathrm m$.
 
@@ -823,14 +836,55 @@ offline model remain unchanged.
 ## Comparison and interpretation notes
 
 - The model APIs retain steering-actuator states for eventual MPC use, but the
-  identification comparisons isolate vehicle dynamics. `compare_models.m` and
-  `eefig_adaptation_analysis.m` impose measured $\delta(k)$ at every step and
-  place the legacy actuator subsystem at equilibrium; requested steering and
-  predicted steering states do not contribute to the reported $v_y/r$ errors.
+  primary identification comparison isolates vehicle dynamics.
+  `compare_models.m` imposes measured $\delta(k)$ at every propagation step
+  and places the actuator subsystem at equilibrium. Requested steering and
+  predicted steering states therefore cannot contaminate the primary
+  $v_y/r/\psi$ ranking. A separate end-to-end diagnostic starts from measured
+  $(\delta,\dot\delta)$ and propagates requested steering through each model's
+  actuator; it is reported separately and is not a vehicle-dynamics result.
 - Measured body yaw is read from `/as/c/state.odom.heading`, projected to a
   wrapped planar angle, unwrapped before interpolation, and used for $\psi$.
   Trajectory course computed from SLAM $x/y$ is not used as vehicle heading,
   and unreliable SLAM position is not scored in the dynamics comparison.
+- One-step predictions use every valid held-out transition. Recursive tests
+  use identical rolling origins for every model and the horizons
+  $\{1,5,10,20,40,60\}$ samples. At $T_s=0.02$ s the emphasized 60-step MPC
+  horizon is 1.2 s. Only origins having the full 60 future samples are used,
+  so horizon curves are paired and changes with horizon are not caused by a
+  changing sample population.
+- The comparison consumes the resampled signals stored in the evaluation MAT
+  file and does not reapply the centred Savitzky--Golay training filter. This
+  measures performance against the deployable held-out signal stream and,
+  importantly, prevents future samples entering the causal adaptive EEFig
+  result through non-causal smoothing. Training/validation losses printed by
+  individual trainers use their own documented filtered data and therefore
+  should not be compared numerically with these raw-stream scores.
+- The persistence baseline keeps $v_y$ and $r$ constant and integrates heading
+  at the initial constant yaw rate. Positive skill relative to this baseline
+  means the model improves RMSE; negative skill means persistence is better.
+- Sample-weighted RMSE gives every prediction window equal influence;
+  run-weighted RMSE first computes each run's RMSE and then gives all runs
+  equal influence. The declared-lap-weighted number weights each run-level
+  RMSE by its metadata lap count. It is not a true per-lap metric because the
+  stored datasets do not contain lap boundaries.
+- Adaptive EEFig is evaluated causally: predict and score first, then update
+  from the newly arrived measured transition. Each held-out run reloads the
+  same offline model and clears transient state. At a rolling origin, the
+  current adapted model is frozen throughout the candidate future rollout;
+  no future measurements are used inside the prediction horizon.
+- Recursive errors above 10 m/s in $v_y$ or 5 rad/s in $r$ are flagged as
+  numerical divergence. These thresholds do not clamp predictions, discard
+  windows, or modify reported metrics. Figures alone use a robust normal-scale
+  axis when a value exceeds ten times the median plotted value; the annotation
+  reports how many values are off scale and the tables retain the full values.
+- The comparison prints a speed sweep of the LTV lateral-state spectral radius.
+  The unclamped forward-Euler system at $T_s=0.02$ s becomes unstable below
+  approximately 3 m/s. The current first-stage mitigation clamps the lateral
+  scheduling speed to 3 m/s, while leaving outputs unconstrained so any
+  remaining divergence stays visible. `anfis_residuals` uses this same LTV
+  base. Because changing the base changes its residual definition, that ANFIS
+  model should be retrained before its final thesis comparison.
 - The nonlinear bicycle and double-track models are propagation models, but
   they do not currently expose an analytic local linearization for MPC.
 - `ltv`, `anfis_delta`, `anfis_direct`, `anfis_dot`, `eefig`, and the matrix

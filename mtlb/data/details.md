@@ -4,6 +4,10 @@ This folder stores the MATLAB datasets used to identify and evaluate the vehicle
 
 The generated `.mat` files are synchronized signal archives. They are resampled and trimmed, but they are not Savitzky-Golay filtered. Model-specific preparation, filtering, normalization, and construction of one-step targets happen later inside each training pipeline.
 
+Related documentation: [`../models/details.md`](../models/details.md) defines
+the models and [`../details.md`](../details.md) describes how the held-out
+comparison is performed.
+
 ## Generated files
 
 | File | Source | Purpose |

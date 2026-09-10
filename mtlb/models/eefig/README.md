@@ -151,6 +151,20 @@ The next prediction reloads the original offline model from `eefig.mat`. Use it 
 
 It does not delete or modify `eefig.mat`.
 
+When an artifact is loaded, the runtime also calls `startNewRun()` once. New
+artifacts are saved after the same reset. This prevents an evaluation stream
+from inheriting the final training run's finite regression window or anomaly
+streak while preserving every learned granule and consequent.
+
+### `compare_models.m` integration
+
+The repository-level comparison script performs the thesis comparison across
+all held-out runs. Its frozen EEFig result never updates the model. Its adaptive
+result uses strict predict-score-update ordering, reloads the offline artifact
+for every run, and freezes the currently adapted model during each 60-step
+future rollout. Consequently, adaptation can use only measurements available
+before a rollout origin; it cannot learn from that rollout's future targets.
+
 ### `eefig_adaptation_analysis.m`
 
 This experiment compares four cases on held-out runs:

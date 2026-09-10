@@ -26,6 +26,9 @@ if isempty(cached_model)
         error('Invalid EEFIG model file: %s', model_file);
     end
     cached_model = loaded.eefig_model;
+    % Never inherit a temporal window or anomaly streak serialized by an
+    % older training artifact. This does not alter learned rules.
+    cached_model.learner.startNewRun();
 end
 
 switch action
