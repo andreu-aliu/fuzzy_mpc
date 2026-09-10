@@ -22,6 +22,10 @@ cfg.min_bin_samples = 50;
 cfg.suppress_model_prints = true;
 cfg.run_end_to_end = true;
 cfg.run_adaptive_eefig = true;
+cfg.plot_selected_window = true;
+cfg.selected_run = 1;          % index in datasets_evaluation.mat
+cfg.selected_start = 1001;     % sample inside the selected run
+cfg.selected_horizon = 300;
 cfg.divergence_abs_vy = 10;  % numerical-failure diagnostic, not clipping
 cfg.divergence_abs_r = 5;
 cfg.plot_outlier_factor = 10; % axis-only robust clipping
@@ -43,6 +47,7 @@ baseline_name = 'Persistence / constant yaw rate';
 baseline_color = [0.950, 0.450, 0.750];
 model_names = [string(models(:,2)); string(baseline_name)];
 model_colors = [vertcat(models{:,3}); baseline_color];
+adaptive_color = [0.000, 0.620, 0.500];
 
 validateattributes(cfg.horizons, {'numeric'}, ...
     {'vector','integer','positive','increasing'});
@@ -209,10 +214,20 @@ if cfg.run_adaptive_eefig
         cfg.focus_horizon, cfg);
 end
 
+%% Selected propagation window
+
+selected_window = struct();
+if cfg.plot_selected_window
+    selected_window = evaluateSelectedPropagationWindow(models,model_names, ...
+        model_colors,runs,Ts,cfg,adaptive_color);
+    plotSelectedPropagationWindow(selected_window);
+end
+
 eefig_reset();
 
 fprintf('\nModel comparison complete. Results remain in the workspace as:\n');
-fprintf('  one_step, dynamics, end_to_end, eefig_adaptive, heading_quality\n');
+fprintf(['  one_step, dynamics, end_to_end, eefig_adaptive, ' ...
+    'selected_window, heading_quality\n']);
 
 %%
 
@@ -740,7 +755,178 @@ for run_idx = 1:n_runs
 end
 end
 
+function result = evaluateSelectedPropagationWindow(models,model_names, ...
+        model_colors,runs,Ts,cfg,adaptive_color)
+validateattributes(cfg.selected_run,{'numeric'}, ...
+    {'scalar','integer','>=',1,'<=',numel(runs)});
+validateattributes(cfg.selected_start,{'numeric'}, ...
+    {'scalar','integer','>=',1});
+validateattributes(cfg.selected_horizon,{'numeric'}, ...
+    {'scalar','integer','positive'});
+
+run = runs(cfg.selected_run);
+origin = cfg.selected_start;
+horizon = cfg.selected_horizon;
+if origin+horizon>run.N
+    error(['Selected propagation window exceeds run %d: start %d + ' ...
+        'horizon %d, but the run contains %d samples.'], ...
+        cfg.selected_run,origin,horizon,run.N);
+end
+
+include_adaptive = cfg.run_adaptive_eefig;
+names = model_names(:);
+colors = model_colors;
+if include_adaptive
+    names(end+1,1) = "EEFIG adaptive";
+    colors(end+1,:) = adaptive_color;
+end
+n_series = numel(names);
+
+result.names = names;
+result.colors = colors;
+result.run = cfg.selected_run;
+result.start = origin;
+result.horizon = horizon;
+result.event = run.event;
+result.track_layout = run.track_layout;
+result.time = (0:horizon)'*Ts;
+indices = origin:(origin+horizon);
+result.measured_vy = run.vy(indices);
+result.measured_r = run.r(indices);
+result.measured_psi = run.psi(indices)-run.psi(origin);
+result.measured_vx = run.vx(indices);
+result.measured_delta = run.delta(indices);
+result.predicted_vy = nan(horizon+1,n_series);
+result.predicted_r = nan(horizon+1,n_series);
+result.predicted_psi = nan(horizon+1,n_series);
+result.predicted_vy(1,:) = run.vy(origin);
+result.predicted_r(1,:) = run.r(origin);
+result.predicted_psi(1,:) = 0;
+
+for m = 1:size(models,1)
+    x = [0;run.vy(origin);0;run.r(origin);run.delta(origin);0];
+    for step = 1:horizon
+        k = origin+step-1;
+        x(5) = run.delta(k); x(6) = 0;
+        x = callModel(models{m,1},x,[run.vx(k),run.delta(k)],Ts, ...
+            cfg.suppress_model_prints);
+        if any(~isfinite(x)), break; end
+        result.predicted_vy(step+1,m) = x(2);
+        result.predicted_r(step+1,m) = x(4);
+        result.predicted_psi(step+1,m) = x(3);
+    end
+end
+
+baseline = numel(model_names);
+result.predicted_vy(:,baseline) = run.vy(origin);
+result.predicted_r(:,baseline) = run.r(origin);
+result.predicted_psi(:,baseline) = result.time*run.r(origin);
+
+result.adaptive_prior_transitions = 0;
+result.adaptive_new_granules_before_window = 0;
+if include_adaptive
+    saved = load(fullfile('models','eefig','eefig.mat'),'eefig_model');
+    learner = saved.eefig_model.learner;
+    learner.startNewRun();
+    initial_granules = learner.NG;
+    sx = saved.eefig_model.norm.scale_x(:);
+    su = saved.eefig_model.norm.scale_u(:);
+
+    % Adapt only from transitions strictly before the selected origin.
+    for k = 1:(origin-1)
+        x_measured = [run.vy(k);run.r(k)];
+        u_measured = [run.vx(k);run.delta(k)];
+        target = [run.vy(k+1);run.r(k+1)];
+        learner.updateOnline(x_measured./sx,u_measured./su,target./sx);
+    end
+    result.adaptive_prior_transitions = origin-1;
+    result.adaptive_new_granules_before_window = learner.NG-initial_granules;
+
+    adaptive_idx = n_series;
+    x_lat = [run.vy(origin);run.r(origin)];
+    psi_relative = 0;
+    for step = 1:horizon
+        k = origin+step-1;
+        u_lat = [run.vx(k);run.delta(k)];
+        x_next = learner.predict(x_lat./sx,u_lat./su).*sx;
+        psi_relative = psi_relative+Ts*x_lat(2);
+        x_lat = x_next;
+        result.predicted_vy(step+1,adaptive_idx) = x_lat(1);
+        result.predicted_r(step+1,adaptive_idx) = x_lat(2);
+        result.predicted_psi(step+1,adaptive_idx) = psi_relative;
+    end
+end
+
+fprintf(['\nSelected propagation window: run %d (%s, %s), samples ' ...
+    '%d-%d, %.2f s.\n'],cfg.selected_run,run.event,run.track_layout, ...
+    origin,origin+horizon,horizon*Ts);
+if include_adaptive
+    fprintf(['Adaptive EEFig uses %d earlier transitions from this run; ' ...
+        'its parameters are frozen inside the plotted window.\n'], ...
+        result.adaptive_prior_transitions);
+end
+end
+
 %% Plotting functions
+
+function plotSelectedPropagationWindow(result)
+figure('Name','Selected dynamics-only propagation window', ...
+    'Position',[80 80 1550 900]);
+layout = tiledlayout(3,2,'TileSpacing','compact','Padding','compact');
+
+measured = {result.measured_vy,result.measured_r,result.measured_psi};
+predicted = {result.predicted_vy,result.predicted_r, ...
+    result.predicted_psi};
+ylabels = {'v_y [m/s]','r [rad/s]','relative heading [rad]'};
+titles = {'Lateral velocity propagation','Yaw-rate propagation', ...
+    'Heading propagation'};
+state_axes = gobjects(3,1);
+for signal = 1:3
+    state_axes(signal) = nexttile(layout);
+    ax = state_axes(signal); hold(ax,'on'); grid(ax,'on');
+    plot(ax,result.time,measured{signal},'k-','LineWidth',2.2, ...
+        'DisplayName','Measured');
+    for m = 1:numel(result.names)
+        style = '-'; width = 1.15;
+        if result.names(m)=="Persistence / constant yaw rate"
+            style = ':'; width = 1.7;
+        elseif result.names(m)=="EEFIG adaptive"
+            style = '--'; width = 1.7;
+        end
+        plot(ax,result.time,predicted{signal}(:,m),style, ...
+            'Color',result.colors(m,:),'LineWidth',width, ...
+            'DisplayName',result.names(m));
+    end
+    xlabel(ax,'Time from window origin [s]');
+    ylabel(ax,ylabels{signal}); title(ax,titles{signal});
+end
+
+ax = nexttile(layout); plot(ax,result.time,result.measured_delta, ...
+    'k-','LineWidth',1.5); grid(ax,'on');
+xlabel(ax,'Time from window origin [s]'); ylabel(ax,'\delta [rad]');
+title(ax,'Measured steering supplied to every dynamics model');
+
+ax = nexttile(layout); plot(ax,result.time,result.measured_vx, ...
+    'k-','LineWidth',1.5); grid(ax,'on');
+xlabel(ax,'Time from window origin [s]'); ylabel(ax,'v_x [m/s]');
+title(ax,'Measured longitudinal speed supplied to every model');
+
+ax = nexttile(layout); axis(ax,'off');
+summary_text = sprintf([ ...
+    'Run: %d\nEvent: %s\nTrack: %s\nSamples: %d--%d\n' ...
+    'Horizon: %d steps (%.2f s)\n' ...
+    'Adaptive prior transitions: %d\nNew adaptive granules before window: %d'], ...
+    result.run,result.event,result.track_layout,result.start, ...
+    result.start+result.horizon,result.horizon,result.time(end), ...
+    result.adaptive_prior_transitions, ...
+    result.adaptive_new_granules_before_window);
+text(ax,0,0.95,summary_text,'Units','normalized', ...
+    'VerticalAlignment','top','Interpreter','none','FontSize',10);
+
+legend(state_axes(1),'Location','eastoutside');
+title(layout,sprintf('Dynamics-only propagation: run %d, sample %d', ...
+    result.run,result.start));
+end
 
 function plotOneStepSummary(summary,model_names,colors,cfg)
 figure('Name','One-step model errors','Position',[100 100 1400 700]);
@@ -960,25 +1146,36 @@ function plotAdaptiveEefig(frozen_one,adaptive_one,frozen_prop, ...
         adaptive_prop,color,focus_horizon,cfg)
 figure('Name','Frozen versus adaptive EEFig','Position',[100 100 1200 750]);
 layout = tiledlayout(2,2,'TileSpacing','compact','Padding','compact');
+
+% Rows are predicted states; columns are evaluation types:
+%   [v_y one-step] [v_y propagation]
+%   [r   one-step] [r   propagation]
 ax = nexttile(layout); bar(ax,[frozen_one.SampleRMSE_vy, ...
     adaptive_one.SampleRMSE_vy],'FaceColor',color); grid(ax,'on');
 xticklabels(ax,{'Frozen','Adaptive'}); ylabel(ax,'v_y RMSE [m/s]');
-title(ax,'Causal one-step evaluation');
+title(ax,'v_y: causal one-step');
 clampYAxisToNormalScale(ax,[frozen_one.SampleRMSE_vy; ...
     adaptive_one.SampleRMSE_vy],cfg.plot_outlier_factor);
+
+plotAdaptiveCurve(nexttile(layout),frozen_prop,adaptive_prop,color, ...
+    'SampleRMSE_vy','v_y RMSE [m/s]',focus_horizon,cfg, ...
+    'v_y: error versus horizon');
+
 ax = nexttile(layout); bar(ax,[frozen_one.SampleRMSE_r, ...
     adaptive_one.SampleRMSE_r],'FaceColor',color); grid(ax,'on');
 xticklabels(ax,{'Frozen','Adaptive'}); ylabel(ax,'r RMSE [rad/s]');
-title(ax,'Causal one-step evaluation');
+title(ax,'r: causal one-step');
 clampYAxisToNormalScale(ax,[frozen_one.SampleRMSE_r; ...
     adaptive_one.SampleRMSE_r],cfg.plot_outlier_factor);
+
 plotAdaptiveCurve(nexttile(layout),frozen_prop,adaptive_prop,color, ...
-    'SampleRMSE_vy','v_y RMSE [m/s]',focus_horizon,cfg);
-plotAdaptiveCurve(nexttile(layout),frozen_prop,adaptive_prop,color, ...
-    'SampleRMSE_r','r RMSE [rad/s]',focus_horizon,cfg);
+    'SampleRMSE_r','r RMSE [rad/s]',focus_horizon,cfg, ...
+    'r: error versus horizon');
+title(layout,'Frozen versus causally adaptive EEFig');
 end
 
-function plotAdaptiveCurve(ax,frozen,adaptive,color,metric,ylab,focus_horizon,cfg)
+function plotAdaptiveCurve(ax,frozen,adaptive,color,metric,ylab, ...
+        focus_horizon,cfg,plot_title)
 frozen = frozen(frozen.Model=="EEFIG offline",:);
 hold(ax,'on'); grid(ax,'on');
 plot(ax,frozen.HorizonSeconds,frozen.(metric),'-o','Color',color, ...
@@ -986,8 +1183,10 @@ plot(ax,frozen.HorizonSeconds,frozen.(metric),'-o','Color',color, ...
 plot(ax,adaptive.HorizonSeconds,adaptive.(metric),'--o','Color',color, ...
     'LineWidth',1.5,'DisplayName','Causally adaptive');
 Ts_plot = frozen.HorizonSeconds(1)/frozen.HorizonSteps(1);
-xline(ax,focus_horizon*Ts_plot,':','MPC horizon');
+xline(ax,focus_horizon*Ts_plot,':','MPC horizon', ...
+    'HandleVisibility','off');
 xlabel(ax,'Prediction horizon [s]'); ylabel(ax,ylab);
+title(ax,plot_title);
 legend(ax,'Location','best');
 clampYAxisToNormalScale(ax,[frozen.(metric);adaptive.(metric)], ...
     cfg.plot_outlier_factor);
