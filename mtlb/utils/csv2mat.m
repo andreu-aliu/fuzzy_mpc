@@ -38,7 +38,8 @@ n_rows = 2 * n_horizon;
 n_cols = 1;
 data = readmatrix("../debug/u_prev.csv");
 row_data = data(iter,:);
-u_prev = reshape(row_data, n_cols, n_rows).';
+u_prev_all = reshape(row_data,n_cols,n_rows).';
+u_prev = u_prev_all(1:2:end); % MATLAB MPC has steering only
 
 % --------   States   ------------
 % T
@@ -169,8 +170,13 @@ params.r_st = 1;
 params.rd_st = 2;
 
 % Bounds
-params.min_st = -0.38; % 436
+params.min_st = -0.38;
 params.max_st = 0.38;
+params.max_delta = 0.45;
+params.max_st_rate = 1.396;
+params.n_horizon = Np;
+params.Ts = dt;
+params.model = "ltv";
 %% Compute MPC with given matrices
 
 [x_pred, u_opt, x_comp] = mpc(x_0, x_ref, x_prev, u_prev, vx, u_prev, params);

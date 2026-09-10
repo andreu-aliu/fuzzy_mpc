@@ -34,6 +34,10 @@ params.rd_st = 2;
 % Bounds
 params.min_st = -0.436;
 params.max_st = 0.436;
+params.n_horizon = Np;
+params.Ts = dt;
+params.model = "anfis_delta";
+params.solve_problem = false;
 %%
 % Generate first global state [x, y, psi, vx, vy, r, delta, delta_dot]
 vx = 020;

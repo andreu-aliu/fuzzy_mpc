@@ -1,18 +1,37 @@
-cd('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'); addpath(genpath('/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb'))
 clear;
+mtlb_dir = '/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb';
+cd(mtlb_dir);
+addpath(genpath(mtlb_dir));
 %% Setup
-dataFile = "/home/andreu/bcnemotorsport/data/simu/trackdrive_FSG";
+dataset_file = fullfile(mtlb_dir,'data','datasets_evaluation.mat');
+evaluation_run = 1;
 
 % Simulation window (from data)
 idx_start = 3000;
-n  = 200;
+n  = 500;
+Np = 60;
+nx = 6;
+nu = 1;
+dt = 0.02;
 
 %% LOAD DATA
-% data = read_ros2bag(dataFile, 0.02);
-load FSG.mat
+source = load(dataset_file,'datasets','meta');
+assert(evaluation_run>=1 && evaluation_run<=numel(source.datasets), ...
+    'evaluation_run must be between 1 and %d.',numel(source.datasets));
+assert(abs(source.meta.Ts-dt)<eps(max(source.meta.Ts,dt)), ...
+    'Dataset sample time %.6g s does not match MPC Ts %.6g s.', ...
+    source.meta.Ts,dt);
+selected_run = source.datasets(evaluation_run);
+data = selected_run.data;
+fprintf('Evaluation run %d: %s | %s | %d lap(s) | %d samples\n', ...
+    evaluation_run,selected_run.event,selected_run.track_layout, ...
+    selected_run.laps,numel(data.time));
 
 %% TAKE A WINDOW OF DATA
-idx_end = min(idx_start + n - 1, height(data.vx));
+assert(idx_start>=1 && idx_start<=numel(data.vx), ...
+    'idx_start must be between 1 and %d for evaluation run %d.', ...
+    numel(data.vx),evaluation_run);
+idx_end = min(idx_start+n-1,numel(data.vx));
 
 meas.t = data.time(idx_start:idx_end);
 in.t = data.time(idx_start:idx_end);
@@ -25,8 +44,17 @@ meas.y = data.y(idx_start:idx_end);
 meas.vx = data.vx(idx_start:idx_end);
 meas.vy = data.vy(idx_start:idx_end);
 meas.r = data.r(idx_start:idx_end);
+meas.delta = data.delta(idx_start:idx_end);
 
-meas.psi = compute_path_heading(meas.x, meas.y);
+meas.course = compute_path_heading(meas.x,meas.y);
+if isfield(data,'psi')
+    meas.psi = unwrap(data.psi(idx_start:idx_end));
+else
+    % Course = body heading + sideslip. The legacy simulation MAT file has
+    % no body-heading signal, so reconstruct it consistently with vx/vy.
+    meas.psi = unwrap(meas.course-atan2(meas.vy,meas.vx));
+end
+n = numel(meas.t);
 
 %% CHECK DATA LOADED
 figure('Name','Data check','Position',[100 100 1200 600]);
@@ -36,7 +64,7 @@ mainLayout = tiledlayout(1,2);
 
 % --- Left: trajectory map ---
 nexttile(mainLayout,1); hold on; grid on; axis equal;
-plot(data.x, data.y, 'w');                    % full run
+plot(data.x, data.y, 'k');                    % full run
 plot(meas.x, meas.y, 'b', 'LineWidth',1.5);                   % selected window
 xlabel('X [m]'); ylabel('Y [m]');
 title('Trajectory map');
@@ -48,7 +76,7 @@ rightLayout.Layout.Tile = 2;
 
 % Longitudinal velocity
 ax1 = nexttile(rightLayout); hold on;
-plot(data.time, data.vx, 'w');
+plot(data.time, data.vx, 'k');
 plot(meas.t, in.vx, 'b','LineWidth',1.2);
 ylabel('V_x [m/s]');
 title('Longitudinal velocity');
@@ -56,7 +84,7 @@ grid on
 
 % Lateral velocity
 ax2 = nexttile(rightLayout); hold on;
-plot(data.time, data.vy, 'w');
+plot(data.time, data.vy, 'k');
 plot(meas.t, meas.vy, 'b','LineWidth',1.2);
 ylabel('V_y [m/s]');
 title('Lateral velocity');
@@ -64,19 +92,22 @@ grid on
 
 % Yaw rate
 ax3 = nexttile(rightLayout); hold on;
-plot(data.time, data.r, 'w');
+plot(data.time, data.r, 'k');
 plot(meas.t, meas.r, 'b','LineWidth',1.2);
 ylabel('r [rad/s]');
 title('Yaw rate');
 grid on
 
-% Steering
+% Measured steering position and recorded steering command
 ax4 = nexttile(rightLayout); hold on;
-plot(data.time, data.st, 'w');
-plot(meas.t, in.st, 'b','LineWidth',1.2);
+plot(data.time,data.delta,'k');
+plot(meas.t,meas.delta,'b','LineWidth',1.2);
+plot(meas.t,in.st,'Color',[0.850 0.325 0.098],'LineWidth',1.0);
 ylabel('\delta [rad]');
 title('Steering');
 xlabel('Time [s]');
+legend('Full measured position','Window measured position', ...
+    'Window recorded command');
 
 % Link time axes
 linkaxes([ax1 ax2 ax3 ax4],'x');
@@ -90,35 +121,40 @@ ds = 0.025;  % [m]
 dx = diff(meas.x);
 dy = diff(meas.y);
 s  = [0; cumsum(sqrt(dx.^2 + dy.^2))];
+[s,unique_idx] = unique(s,'stable');
+assert(numel(s)>=2,'The selected trajectory has no usable arc length.');
+path_x = meas.x(unique_idx);
+path_y = meas.y(unique_idx);
+path_vx = meas.vx(unique_idx);
 
 % Uniform arc-length grid
 s_uniform = (0:ds:s(end)).';
 
 % Interpolate
-x_u = interp1(s, meas.x, s_uniform, 'spline');
-y_u = interp1(s, meas.y, s_uniform, 'spline');
-vx_u = interp1(s, meas.vx, s_uniform, 'spline');
-r_u = interp1(s, meas.r, s_uniform, 'spline');
+x_u = interp1(s,path_x,s_uniform,'pchip');
+y_u = interp1(s,path_y,s_uniform,'pchip');
+vx_u = interp1(s,path_vx,s_uniform,'linear');
 
 % Compute heading
 dx_u = gradient(x_u, ds);
 dy_u = gradient(y_u, ds);
 psi_u = unwrap(atan2(dy_u, dx_u));
+kappa_u = gradient(psi_u,ds);
 
 traj.s   = s_uniform;
 traj.x   = x_u;
 traj.y   = y_u;
 traj.psi = psi_u;
 traj.vx  = vx_u;
-traj.r   = r_u;
+traj.kappa = kappa_u;
 
 
 %% MPC PARAMETERS & OPTIONS
 
-Np = 60;
-nx = 6;
-nu = 1;
-dt = 0.02;
+params.n_horizon = Np;
+params.Ts = dt;
+params.model = "eefig"; % ltv anfis_direct anfis_delta anfis_derivative anfis_ltv_residual eefig
+params.eefig_adaptive = true;
 
 % Scales for normalization
 params.scale_y   = 0.1;   % m
@@ -148,8 +184,10 @@ params.r_st = 1;
 params.rd_st = 2;
 
 % Bounds
-params.min_st = -0.38; % 436
+params.min_st = -0.38;
 params.max_st = 0.38;
+params.max_delta = 0.45; % [rad], physical steering-position limit
+params.max_st_rate = 1.396; % [rad/s], command and actuator-state limit
 
 % Debug options
 debug_opts.enabled = false;
@@ -169,22 +207,40 @@ comp_opts.figure_id = 98;
 X = cell(n,1);
 U = cell(n,1);
 model_error = NaN(1,n);
+solver_exitflag = NaN(1,n-1);
+mpc_compute_time = NaN(1,n-1);
+model_matrix_compute_time = NaN(1,n-1);
+solver_compute_time = NaN(1,n-1);
+adaptation_compute_time = zeros(1,n-1);
 
-% Initial GLOBAL state
+% Initial GLOBAL state. Use only samples available at the initial instant.
+if idx_start > 1
+    initial_delta_dot = (data.delta(idx_start)-data.delta(idx_start-1))/dt;
+else
+    initial_delta_dot = 0;
+end
 X{1} = [meas.x(1);
         meas.y(1);
         meas.psi(1);
         meas.vx(1);
         meas.vy(1);
         meas.r(1);
-        0;
-        0];
+        meas.delta(1);
+        initial_delta_dot];
 
 U{1} = in.st(1);
 
-% Warm start
-x_pred = repmat([0 meas.vy(1) 0 meas.r(1) 0 0], Np, 1); % local state
-u_pred = zeros(Np,1);
+% Warm start. The state guess is initialized after the first local frame is
+% known, then shifted after every solve.
+x_pred = zeros(Np,nx);
+u_pred = repmat(in.st(1),Np,1);
+reference_idx = [];
+reference_idx_history = NaN(n,1);
+x_ref = zeros(Np,nx);
+vx_ref = zeros(Np,1);
+if strcmpi(params.model,"eefig")
+    eefig_reset();
+end
 
 for k = 1:n-1
 
@@ -192,10 +248,15 @@ for k = 1:n-1
     Xg = X{k};
 
     % Find global reference
-    X_ref_global = build_reference_global(traj, Xg, dt, Np+1);
+    [X_ref_global,reference_idx] = build_reference_global( ...
+        traj,Xg,dt,Np+1,reference_idx);
+    reference_idx_history(k) = reference_idx;
 
     % Convert GLOBAL → LOCAL MPC state
     [x_0, ~] = global_to_local_state(Xg, X_ref_global{1});
+    if k == 1
+        x_pred = repmat(x_0.',Np,1);
+    end
     for i = 1:Np
         [x_ref(i,:), vx_ref(i)] = global_to_local_state(X_ref_global{i+1}, X_ref_global{1});
     end
@@ -205,24 +266,39 @@ for k = 1:n-1
     x_pred_vec = reshape(x_pred.', [], 1);
     u_pred_vec = reshape(u_pred.', [], 1);
 
-    [x_pred_vec, u_pred_vec, ~] = mpc(x_0, x_ref_vec, x_pred_vec, u_pred_vec, vx_ref, U{k}, params);
+    mpc_timer = tic;
+    [x_pred_vec,u_pred_vec,~,mpc_info] = mpc( ...
+        x_0,x_ref_vec,x_pred_vec,u_pred_vec,vx_ref,U{k},params);
+    mpc_compute_time(k) = toc(mpc_timer);
+    model_matrix_compute_time(k) = mpc_info.model_matrix_time;
+    solver_compute_time(k) = mpc_info.solver_time;
+    solver_exitflag(k) = mpc_info.exitflag;
 
-    x_pred = reshape(x_pred_vec, nx, []).';
-    u_pred = reshape(u_pred_vec, nu, []).';
+    x_solution = reshape(x_pred_vec,nx,[]).';
+    u_solution = reshape(u_pred_vec,nu,[]).';
 
     % Debug plots 
-    mpc_debug_plot(k, x_0, x_ref, x_pred, u_pred, params, debug_opts);
+    mpc_debug_plot(k,x_0,x_ref,x_solution,u_solution,params,debug_opts);
 
     % Apply first control
-    u = u_pred(1,:)';
+    u = u_solution(1,:)';
     % u = in.st(k); % Test with measured steering
 
     U{k+1} = u;
 
     % Simulate GLOBAL dynamics
     % X{k+1} = sim_anfis_delta(Xg', u', vx_ref(1), dt)';
-    X{k+1} = sim_bicycleDynamic_linear(Xg', u', meas.vx(k), dt)';
+    X{k+1} = sim_bicycleDynamic_linear(Xg',u',meas.vx(k+1),dt)';
     % X{k+1} = sim_ltv(Xg', u', vx_ref(1), dt);
+
+    if strcmpi(params.model,"eefig") && params.eefig_adaptive
+        adaptation_timer = tic;
+        x_measured = [0;Xg(5);0;Xg(6);Xg(7);Xg(8)];
+        x_next_measured = [0;X{k+1}(5);0;X{k+1}(6); ...
+            X{k+1}(7);X{k+1}(8)];
+        eefig_online_update(x_measured,[Xg(4);u],x_next_measured);
+        adaptation_compute_time(k) = toc(adaptation_timer);
+    end
 
     % Compare last seen states with mpc predicted. Model error
     if k > Np+1
@@ -252,7 +328,10 @@ for k = 1:n-1
         x_comp_vec  = reshape(x_comp.', [], 1);
         u_comp_vec  = reshape(u_comp.', [], 1);
 
-        [~,~,x_pred_comp_vec] = mpc(x_0_comp, x_comp_vec, x_comp_vec, u_comp_vec, vx_comp, U{k}, params);
+        comparison_params = params;
+        comparison_params.solve_problem = false;
+        [~,~,x_pred_comp_vec] = mpc(x_0_comp,x_comp_vec,x_comp_vec, ...
+            u_comp_vec,vx_comp,U{k},comparison_params);
 
         x_pred_comp = reshape(x_pred_comp_vec, nx, []).';
 
@@ -271,13 +350,22 @@ for k = 1:n-1
         mpc_debug_plot(k, x_0_comp, x_comp, x_pred_comp, u_comp, params, comp_opts);
     end
 
+    % Shift the solution so the next LTV/TS linearization is centered on
+    % the same future instants as the next receding horizon.
+    x_pred = [x_solution(2:end,:);x_solution(end,:)];
+    u_pred = [u_solution(2:end,:);u_solution(end,:)];
+
     fprintf("Iteration %i done\n", k);
 end
+
+% Associate the final state with the next monotonic path point.
+reference_idx_history(n) = find_closest_point( ...
+    traj,X{n}(1),X{n}(2),reference_idx);
 %% PLOT RESULTS
 
 % Convert cell → matrix
-Xg_mat = cell2mat(X')';   % N x 6
-U_mat  = cell2mat(U')';   % N x 2
+Xg_mat = cell2mat(X')';   % N x 8
+U_mat  = cell2mat(U')';   % N x 1
 
 % Extract global states
 x_sim = Xg_mat(:,1);
@@ -285,6 +373,14 @@ y_sim = Xg_mat(:,2);
 delta_sim = Xg_mat(:,7);
 
 st_sim = U_mat(:,1);
+
+% Signed cross-track error in the local frame of the path reference used
+% by the controller. Positive error points to the left of the path tangent.
+ref_x = traj.x(reference_idx_history);
+ref_y = traj.y(reference_idx_history);
+ref_psi = traj.psi(reference_idx_history);
+lateral_error = -sin(ref_psi).*(x_sim-ref_x) ...
+    + cos(ref_psi).*(y_sim-ref_y);
 
 %t_u = meas.t(1:size(U_mat,1));
 t_u = 0:dt:dt*(size(U_mat,1)-1);
@@ -295,8 +391,8 @@ tl = tiledlayout(3,1,'TileSpacing','compact','Padding','compact');
 % ===== TOP: GLOBAL TRAJECTORY =====
 ax1 = nexttile; hold on; grid on; axis equal;
 
-% Reference path from measurements (white solid)
-plot(meas.x, meas.y, 'w', 'LineWidth', 2);
+% Reference path from measurements (black solid)
+plot(meas.x,meas.y,'k-','LineWidth',2);
 
 % Simulated path (white dashed)
 plot(x_sim, y_sim, '-r', 'LineWidth', 2);
@@ -307,18 +403,18 @@ title('Global Trajectory Tracking');
 
 legend('Reference (meas)','Simulated','Location','best');
 
-set(gca, 'Color', 'k');   % black background
+set(ax1,'Color','w');
 
-% ===== MIDDLE: CONTROLS =====
+% ===== MIDDLE: LATERAL TRACKING ERROR =====
 ax2 = nexttile; hold on; grid on;
 
-plot(t_u, st_sim, 'LineWidth', 1.5);
-plot(t_u, delta_sim, 'LineWidth', 1.5);
-ylabel('\delta [rad]');
-
+plot(t_u,lateral_error,'k-','LineWidth',1.5);
+yline(0,'Color',[0.5 0.5 0.5],'LineStyle','--', ...
+    'HandleVisibility','off');
+ylabel('e_y [m]');
 xlabel('Time [s]');
-title('Control Inputs');
-legend('Steering command','Actual steering','Location','best');
+title(sprintf('Signed lateral error: RMSE %.3f m, max |e_y| %.3f m', ...
+    sqrt(mean(lateral_error.^2)),max(abs(lateral_error))));
 
 % ===== BOTTOM: MODEL ERROR =====
 ax3 = nexttile; hold on; grid on;
@@ -331,6 +427,58 @@ title('Model Error');
 legend('Model error','Location','best');
 
 linkaxes([ax2 ax3],'x')
+
+%% PERFORMANCE INSIGHTS
+
+valid_model_error = model_error(isfinite(model_error));
+if isempty(valid_model_error)
+    mean_model_error = NaN;
+    model_error_p95 = NaN;
+else
+    mean_model_error = mean(valid_model_error);
+    model_error_p95 = prctile(valid_model_error,95);
+end
+command_rate = diff(st_sim)/dt;
+online_cycle_time = mpc_compute_time+adaptation_compute_time;
+model_label = string(params.model);
+if strcmpi(params.model,"eefig")
+    if params.eefig_adaptive
+        model_label = model_label+" adaptive";
+    else
+        model_label = model_label+" frozen";
+    end
+end
+mpc_insights = table( ...
+    model_label,evaluation_run,string(selected_run.event), ...
+    string(selected_run.track_layout),(n-1)*dt, ...
+    mean(lateral_error),mean(abs(lateral_error)), ...
+    sqrt(mean(lateral_error.^2)),prctile(abs(lateral_error),95), ...
+    max(abs(lateral_error)),mean_model_error,model_error_p95, ...
+    1e3*mean(model_matrix_compute_time), ...
+    1e3*prctile(model_matrix_compute_time,95), ...
+    1e3*mean(solver_compute_time), ...
+    1e3*prctile(solver_compute_time,95), ...
+    1e3*mean(mpc_compute_time),1e3*prctile(mpc_compute_time,95), ...
+    1e3*mean(adaptation_compute_time), ...
+    1e3*prctile(adaptation_compute_time,95), ...
+    1e3*mean(online_cycle_time),1e3*prctile(online_cycle_time,95), ...
+    1e3*max(online_cycle_time),100*mean(online_cycle_time>dt), ...
+    sum(solver_exitflag~=1),sqrt(mean(st_sim.^2)), ...
+    sqrt(mean(command_rate.^2)),max(abs(command_rate)), ...
+    'VariableNames',{ ...
+    'Model','EvaluationRun','Event','TrackLayout','Duration_s', ...
+    'MeanSignedLateralError_m','LateralMAE_m','LateralRMSE_m', ...
+    'LateralP95_m','LateralMaxAbs_m','MeanModelError', ...
+    'ModelErrorP95','MeanModelMatrixTime_ms','ModelMatrixTimeP95_ms', ...
+    'MeanSolverTime_ms','SolverTimeP95_ms','MeanMPCTime_ms', ...
+    'MPCTimeP95_ms','MeanAdaptationTime_ms','AdaptationTimeP95_ms', ...
+    'MeanOnlineCycleTime_ms','OnlineCycleTimeP95_ms', ...
+    'MaxOnlineCycleTime_ms','DeadlineMissPercent', ...
+    'SolverFailures','SteeringCommandRMS_rad', ...
+    'SteeringCommandRateRMS_rad_s','SteeringCommandRateMax_rad_s'});
+
+fprintf('\nMPC PERFORMANCE INSIGHTS\n');
+disp(mpc_insights);
 
 
 %%
@@ -353,22 +501,32 @@ function psi_path = compute_path_heading(x, y)
     psi_path = unwrap(atan2(dy, dx));
 end
 
-function idx = find_closest_point(traj, x, y)
+function idx = find_closest_point(traj,x,y,previous_idx)
 
-    dx = traj.x - x;
-    dy = traj.y - y;
+    if isempty(previous_idx)
+        candidates = 1:numel(traj.s);
+    else
+        % Preserve path progress and restrict the search to the next 5 m.
+        search_samples = max(1,ceil(5/median(diff(traj.s))));
+        last_idx = min(numel(traj.s),previous_idx+search_samples);
+        candidates = previous_idx:last_idx;
+    end
+    dx = traj.x(candidates)-x;
+    dy = traj.y(candidates)-y;
 
-    [~, idx] = min(dx.^2 + dy.^2);
+    [~,local_idx] = min(dx.^2+dy.^2);
+    idx = candidates(local_idx);
 end
 
-function X_ref = build_reference_global(traj, Xg, dt, Np)
+function [X_ref,idx] = build_reference_global( ...
+        traj,Xg,dt,Np,previous_idx)
 % Build reference state list in global coordinates
 % Global state: [x y psi vx vy r delta delta_dot]
 
     X_ref = cell(Np,1);
     
     % Find point closest to actual position
-    idx = find_closest_point(traj, Xg(1), Xg(2));
+    idx = find_closest_point(traj,Xg(1),Xg(2),previous_idx);
 
     s_i = traj.s(idx);
     for i = 1:Np
@@ -384,7 +542,8 @@ function X_ref = build_reference_global(traj, Xg, dt, Np)
         x_t   = interp1(traj.s, traj.x, s_i, 'spline');
         y_t   = interp1(traj.s, traj.y, s_i, 'spline');
         psi_t = interp1(traj.s, traj.psi, s_i, 'spline');
-        r_t   = interp1(traj.s, traj.r, s_i, 'spline'); 
+        kappa_t = interp1(traj.s,traj.kappa,s_i,'linear');
+        r_t = vx_i*kappa_t;
 
         % Propagate arc-length using trajectory speed
         s_i = s_i + vx_i * dt;
@@ -419,7 +578,6 @@ function [x_local, vx] = global_to_local_state(X_global, X_ref)
     dy = y - y_ref;
 
     % Rotation: global → local (reference frame)
-    x_local_pos =  cos(psi_ref)*dx + sin(psi_ref)*dy;
     y_local_pos = -sin(psi_ref)*dx + cos(psi_ref)*dy;
 
     % Relative heading

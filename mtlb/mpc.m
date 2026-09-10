@@ -5,23 +5,52 @@
 %    x_pred     [6*60,1]
 %    u_pred     [60,1]
 %    vx         [60,1]
-%    params:    weights and constraints
+%    params:    horizon, sample time, model, weights, and constraints
 % Output:
-%    x_pred     [6*60,1]: Predicted states for the optimal inputs
-%    u_opt      [60,1]: Optimal steering commands
-%    x_comp     [6*60,1]: Predicted states for the previous inputs
+%    x_pred:    Predicted states for the optimal inputs
+%    u_opt:     Optimal steering commands
+%    x_comp:    Predicted states for the previous inputs
+%    info:      Solver exit flag and fallback status
 
-function [x_pred, u_opt, x_comp]= mpc(x_0, x_ref, x_prev, u_prev, vx, u_prev_iter, params)
+function [x_pred,u_opt,x_comp,info] = mpc( ...
+        x_0,x_ref,x_prev,u_prev,vx,u_prev_iter,params)
+
+total_timer = tic;
 
 % Parameters of the MPC
-n_horizon = 60;
 n_states = 6;
 n_inputs = 1;
+n_horizon = params.n_horizon;
+dt = params.Ts;
+
+validateattributes(n_horizon,{'numeric'}, ...
+    {'scalar','integer','positive'},mfilename,'params.n_horizon');
+validateattributes(dt,{'numeric'}, ...
+    {'scalar','real','finite','positive'},mfilename,'params.Ts');
+validateattributes(x_0,{'numeric'}, ...
+    {'vector','numel',n_states,'finite'},mfilename,'x_0');
+validateattributes(x_ref,{'numeric'}, ...
+    {'vector','numel',n_states*n_horizon,'finite'},mfilename,'x_ref');
+validateattributes(x_prev,{'numeric'}, ...
+    {'vector','numel',n_states*n_horizon,'finite'},mfilename,'x_prev');
+validateattributes(u_prev,{'numeric'}, ...
+    {'vector','numel',n_inputs*n_horizon,'finite'},mfilename,'u_prev');
+validateattributes(vx,{'numeric'}, ...
+    {'vector','numel',n_horizon,'finite'},mfilename,'vx');
+validateattributes(u_prev_iter,{'numeric'}, ...
+    {'vector','nonempty','finite'},mfilename,'u_prev_iter');
+
+x_0 = x_0(:);
+x_ref = x_ref(:);
+x_prev = x_prev(:);
+u_prev = u_prev(:);
+vx = vx(:);
 
 % Discrete model matrices for each step
 Ad = cell(n_horizon,1);
 Bd = cell(n_horizon,1);
 Cd = cell(n_horizon,1);
+model_matrix_timer = tic;
 for i = 1:n_horizon
     from_u = (i-1)*n_inputs + 1;
     to_u   = i*n_inputs;
@@ -37,10 +66,9 @@ for i = 1:n_horizon
 
     vxi = vx(i);
     
-    % Select model for MPC
-    % [Ad{i}, Bd{i}, Cd{i}] = anfis_residuals_matrix(xi, ui, vxi); anfis = false;
-    % [Ad{i}, Bd{i}, Cd{i}] = anfis_delta_matrix(xi, ui, vxi); anfis = true;
-    [Ad{i}, Bd{i}, Cd{i}] = ltv_matrix(xi, ui, vxi); anfis = false;
+    % Instantiate the configured model about the shifted previous solution.
+    [Ad{i}, Bd{i}, Cd{i}] = configuredModelMatrix( ...
+        params.model,xi,ui,vxi,dt);
 
     % Check inputs and matrixes
     assert(all(isfinite(xi)), 'x_prev invalid at step %d', i);
@@ -57,6 +85,7 @@ for i = 1:n_horizon
         warning('Large Bd at step %d: norm=%g', i, norm(Bd{i}, inf));
     end
 end
+info.model_matrix_time = toc(model_matrix_timer);
 
 % Fill matrix T
 T = zeros(n_states * n_horizon, n_states);
@@ -106,8 +135,8 @@ Q = diag([
     params.q_vy/params.scale_vy^2
     params.q_psi/params.scale_psi^2
     params.q_r/params.scale_r^2
-    params.q_st/params.scale_st^2;
-    params.q_dst/params.scale_dst^2;
+    params.q_st/params.scale_st^2
+    params.q_dst/params.scale_dst^2
 ]);
 
 % Initialize P matrix
@@ -117,7 +146,7 @@ P = diag([
     params.p_psi/params.scale_psi^2
     params.p_r/params.scale_r^2
     params.p_st/params.scale_st^2
-    params.p_dst/params.scale_dst^2;
+    params.p_dst/params.scale_dst^2
 ]);
 
 % Initialize R matrix
@@ -194,15 +223,48 @@ for i = 1:n_horizon
     ub(n_inputs*(i-1)+1:n_inputs*i) = params.max_st;
 end
 
-% Call quadprog
-options = optimoptions('quadprog', 'Display', 'off');
+solve_problem = ~isfield(params,'solve_problem') || params.solve_problem;
+if solve_problem
+    % Hard limits on command increments and predicted actuator states. The
+    % command increment is converted from rad/s to rad/sample using Ts.
+    free_prediction = T*x_0 + W;
+    max_command_step = params.max_st_rate*dt;
+    Aineq = [D;-D];
+    bineq = [max_command_step*ones(n_horizon,1)-d; ...
+             max_command_step*ones(n_horizon,1)+d];
 
-[u_opt, fval, exitflag] = quadprog(H, g, [], [], [], [], lb, ub, [], options);
+    select_delta = kron(eye(n_horizon),[0 0 0 0 1 0]);
+    select_delta_dot = kron(eye(n_horizon),[0 0 0 0 0 1]);
+    S_delta = select_delta*S;
+    S_delta_dot = select_delta_dot*S;
+    free_delta = select_delta*free_prediction;
+    free_delta_dot = select_delta_dot*free_prediction;
+    Aineq = [Aineq;S_delta;-S_delta;S_delta_dot;-S_delta_dot];
+    bineq = [bineq; ...
+        params.max_delta*ones(n_horizon,1)-free_delta; ...
+        params.max_delta*ones(n_horizon,1)+free_delta; ...
+        params.max_st_rate*ones(n_horizon,1)-free_delta_dot; ...
+        params.max_st_rate*ones(n_horizon,1)+free_delta_dot];
 
-% Check optimization status
-if exitflag ~= 1
-    warning('quadprog did not converge. Exitflag: %d', exitflag);
+    options = optimoptions('quadprog','Display','off');
+    solver_timer = tic;
+    [u_opt,~,exitflag] = quadprog( ...
+        H,g,Aineq,bineq,[],[],lb,ub,[],options);
+    info.solver_time = toc(solver_timer);
+    info.exitflag = exitflag;
+    info.used_fallback = exitflag ~= 1;
+
+    if exitflag ~= 1
+        warning('quadprog did not converge. Exitflag: %d',exitflag);
+        u_opt = u_prev;
+    end
+else
+    % Prediction-only mode is used by the model-error diagnostic. It must
+    % not solve an unrelated constrained tracking problem.
     u_opt = u_prev;
+    info.exitflag = NaN;
+    info.used_fallback = false;
+    info.solver_time = 0;
 end
 
 % Prediction
@@ -210,26 +272,25 @@ x_pred = S * u_opt + T * x_0 + W;
 
 % Prediction to compare model
 x_comp = S * u_prev + T * x_0 + W;
+info.total_time = toc(total_timer);
 
-% Limit prediction with training limits (anfis)
-if anfis
-    persistent anfis_delta;
-    if isempty(anfis_delta)
-        S_anfis = load('anfis_delta.mat', 'anfis_delta');
-        anfis_delta = S_anfis.anfis_delta;
-    end
-
-    max_vy = anfis_delta.vy.max;
-    min_vy = anfis_delta.vy.min;
-    max_r  = anfis_delta.r.max;
-    min_r  = anfis_delta.r.min;
-
-    for i = 1:n_horizon
-        idx = (i-1)*n_states;
-        x_pred(idx+2) = max(min(x_pred(idx+2), max_vy), min_vy);
-        x_pred(idx+4) = max(min(x_pred(idx+4), max_r), min_r);
-    end
 end
 
-
+function [A,B,C] = configuredModelMatrix(model_name,x,u,vx,dt)
+switch lower(string(model_name))
+    case "ltv"
+        [A,B,C] = ltv_matrix(x,u,vx,dt);
+    case "anfis_direct"
+        [A,B,C] = anfis_direct_matrix(x,u,vx,dt);
+    case "anfis_delta"
+        [A,B,C] = anfis_delta_matrix(x,u,vx,dt);
+    case "anfis_derivative"
+        [A,B,C] = anfis_dot_matrix(x,u,vx,dt);
+    case "anfis_ltv_residual"
+        [A,B,C] = anfis_residuals_matrix(x,u,vx,dt);
+    case "eefig"
+        [A,B,C] = eefig_matrix(x,u,vx,dt);
+    otherwise
+        error('Unknown MPC model "%s".',string(model_name));
+end
 end
