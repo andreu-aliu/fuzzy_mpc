@@ -674,3 +674,111 @@ A low one-step error does not guarantee good 60-step propagation. Conversely,
 a model with a slightly worse local fit can be preferable for MPC if its bias
 and recursive error growth are smaller and it remains stable throughout the
 operating domain.
+
+## Closed-loop MPC benchmark
+
+`simulate_mpc.m` supports both detailed single-scenario inspection and an
+all-scenario held-out benchmark. The relevant configuration is at the top of
+the script:
+
+```matlab
+run_selection = "all";       % or a numeric vector such as [1 3 5]
+use_full_run = true;         % false uses idx_start/window_sample_count
+trim_start_seconds = 0;
+trim_end_seconds = 0;
+max_mpc_windows_per_run = 500; % Inf evaluates the complete run
+plot_run_indices = [];       % e.g. [1 5] to plot only those batch runs
+```
+
+With `run_selection = "all"`, every run in `datasets_evaluation.mat` is
+simulated using the same prediction model, plant, horizon, weights, scales,
+and constraints. EEFig is reset at the beginning of every run, so adaptive
+evaluation does not transfer held-out information between scenarios.
+`run_mpc_scenario.m` contains the complete preparation and closed-loop loop for
+one run; `simulate_mpc.m` calls it only from the `SIMULATE` section.
+
+The script sections are deliberately independent. `LOAD DATA` only loads and
+validates the selected run indices. `SIMULATE` produces `scenario_results` but
+does not create the main result figures. `PLOT INPUT DATA` and `PLOT RESULTS`
+read the already-computed results and display only the dataset run indices in
+`plot_run_indices`. `PERFORMANCE INSIGHTS` reads those same immutable result
+structures, updates the MAT database, and rebuilds the aggregate table. No
+loop or conditional block crosses a `%%` section boundary.
+
+`max_mpc_windows_per_run` limits the number of MPC optimizations performed in
+each run after trimming. A value of `500`, for example, evaluates 500
+consecutive closed-loop control instants (10 s at 20 ms) from every selected
+run. `Inf` restores complete-run evaluation. The windows must remain
+consecutive: skipping intermediate control instants would break the propagated
+closed-loop state and would no longer represent one continuous experiment.
+
+The spatial reference uses the measured longitudinal-speed profile, but
+clamps negative reference progress to zero. Several runs begin with small
+negative `vx` values while stationary (sensor noise rather than intentional
+reverse driving). Allowing those values to integrate arc length would query
+the path at `s < 0` and create a non-finite MPC reference. The measured speed
+passed to the simulated plant is not replaced by this reference clamp.
+
+The script stores two variables in `mpc_results.mat`:
+
+- `mpc_results_database` contains one row per controller/setup and scenario.
+- `mpc_results_summary` groups all available scenarios belonging to the same
+  controller/setup and evaluation protocol.
+
+The controller key includes the dataset file, full-run versus selected-window
+protocol, per-run window cap, trimming policy, prediction and plant models,
+EEFig mode, horizon, sample time, scales, weights, limits, and reference
+method. The scenario key contains the run, actual start sample, sample count,
+event, layout, and declared lap count. Repeating the same trial updates its
+database row; changing the scenario adds a row under the same controller key.
+
+Manual selected windows, capped-run benchmarks, and complete-run benchmarks
+deliberately receive different controller keys and are never combined. The summary reports
+`ScenarioCoveragePercent`; thesis-level aggregate results should only be used
+when this is 100%. Its principal lateral metric is the equal-run mean of the
+run RMSE values. It also reports the median and worst run and a sample-weighted
+RMSE, together with model error, computation time, deadline misses, and solver
+failures.
+
+`DeclaredLaps` remains metadata only. A ten-lap run still produces one
+scenario-level measurement because the dataset has no lap boundary indices.
+Consequently, the closed-loop summary is genuinely run-balanced, not
+lap-balanced.
+
+### Closed-loop model comparison section
+
+After storing the scenario results for every desired prediction model, run
+`CLOSED-LOOP MODEL COMPARISON` by itself. It reads `mpc_results.mat`; it does
+not rerun the controller or alter the database.
+
+Controller results are comparable only when dataset, evaluation protocol,
+window cap, trimming, plant, horizon, sample time, weights, scales, limits,
+and reference construction are identical. The section constructs comparison
+groups by holding all those fields fixed and allowing only
+`PredictionModel` and `EEFigAdaptive` to change. It first prints the available
+groups. By default,
+
+```matlab
+comparison_group_id = [];
+comparison_only_complete = true;
+```
+
+selects the most recently updated group containing at least two model variants
+and excludes variants whose `ScenarioCoveragePercent` is below 100%. Set an
+explicit group number to inspect an older setup. Setting
+`comparison_only_complete = false` is useful while accumulating results, but
+incomplete variants must not be used for the final ranking.
+
+The section produces:
+
+- a ranked numerical table with coverage, equal-run and sample-weighted
+  lateral RMSE, median and worst-run RMSE, tail error, model error,
+  computation time, deadline misses, and solver failures;
+- an aggregate figure comparing tracking accuracy, tail error, online time,
+  and the accuracy/computation trade-off;
+- a run-by-model lateral-RMSE heatmap;
+- a run-by-model deadline-miss heatmap.
+
+The equal-run lateral RMSE is the principal ranking metric. The per-run
+heatmap and worst-run values must be inspected before accepting that ranking,
+because an aggregate improvement can hide failure on one event or layout.
