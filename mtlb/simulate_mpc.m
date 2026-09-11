@@ -87,6 +87,8 @@ params.n_horizon = Np;
 params.Ts = dt;
 params.model = "eefig"; % ltv anfis_direct anfis_delta anfis_derivative anfis_ltv_residual eefig
 params.eefig_adaptive = false;
+% Plant options: nonlinear_bicycle_linear_tire, nonlinear_bicycle,
+% anfis_delta, ltv.
 plant_model = "nonlinear_bicycle_linear_tire";
 
 params.scale_y = 0.1;

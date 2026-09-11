@@ -124,6 +124,9 @@ for k = 1:n-1
         case "nonlinear_bicycle_linear_tire"
             X{k+1} = sim_bicycleDynamic_linear( ...
                 Xg.',u.',meas.vx(k+1),dt).';
+        case "nonlinear_bicycle"
+            X{k+1} = sim_nonlinear_bicycle( ...
+                Xg.',u.',meas.vx(k+1),dt).';
         case "anfis_delta"
             X{k+1} = sim_anfis_delta(Xg.',u.',meas.vx(k+1),dt).';
         case "ltv"

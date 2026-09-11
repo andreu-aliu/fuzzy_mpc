@@ -236,6 +236,36 @@ uniformly selected samples. Samples below $2\ \mathrm{m/s}$ are excluded.
 The fitted parameters are stored in `nonlinear_bicycle_params.mat`; nominal
 defaults are used when that file does not exist.
 
+### Closed-loop simulation wrapper
+
+`simulation_models/sim_nonlinear_bicycle.m` exposes the same identified model
+as an eight-state global plant:
+
+$$
+X=\begin{bmatrix}x&y&\psi&v_x&v_y&r&\delta&\dot\delta\end{bmatrix}^{\mathsf T}.
+$$
+
+It calls `nonlinear_bicycle` for $y$, $v_y$, $\psi$, $r$, $\delta$, and
+$\dot\delta$, so the tyre law, fitted parameter file, steering actuator, and
+Euler discretization cannot drift away from the comparison model. The missing
+global longitudinal kinematics are added as
+
+$$
+x_{k+1}=x_k+T_s\left(v_{x,k}\cos\psi_k-v_{y,k}\sin\psi_k\right).
+$$
+
+Longitudinal dynamics are outside the lateral-model scope. As in the other MPC
+plants, the wrapper therefore sets $v_{x,k+1}$ to the next measured speed
+provided by the evaluation scenario. Select it with
+
+```matlab
+plant_model = "nonlinear_bicycle";
+```
+
+The earlier `nonlinear_bicycle_linear_tire` plant remains available as a
+separate legacy baseline; it uses linear cornering stiffness rather than the
+nonlinear saturated tyre forces documented above.
+
 ## Nonlinear double-track model (`nonlinear_double_track`)
 
 This model keeps separate front-left (FL), front-right (FR), rear-left (RL),
