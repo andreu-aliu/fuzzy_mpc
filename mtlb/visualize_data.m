@@ -22,6 +22,10 @@ selected_run = 1;               % index inside the selected split
 % Leave empty for the complete prepared run, or use [first last] samples.
 selected_sample_range = [];
 
+% Exchange X and Y only in the trajectory visualization. This does not
+% modify the loaded dataset or any model input.
+swap_map_xy = true;
+
 %% LOAD PREPARED DATA
 
 assert(isfile(training_dataset_file), ...
@@ -114,13 +118,26 @@ title(layout,sprintf('%s run %d | %s | %s | %g declared lap(s)', ...
     upperFirst(selected_split),selected_run,selected.event, ...
     selected.track_layout,selected.laps),'Interpreter','none');
 
+if swap_map_xy
+    map_x = data.y(idx);
+    map_y = data.x(idx);
+    map_x_label = 'Y [m]';
+    map_y_label = 'X [m]';
+else
+    map_x = data.x(idx); %#ok<UNRCH>
+    map_y = data.y(idx);
+    map_x_label = 'X [m]';
+    map_y_label = 'Y [m]';
+end
+
 map_axis = nexttile(layout,[4 1]); hold(map_axis,'on'); grid(map_axis,'on');
-plot(map_axis,data.x(idx),data.y(idx),'k-','LineWidth',1.3);
-scatter(map_axis,data.x(idx(1)),data.y(idx(1)),50,[0.1 0.65 0.2], ...
+plot(map_axis,map_x,map_y,'k-','LineWidth',1.3);
+scatter(map_axis,map_x(1),map_y(1),50,[0.1 0.65 0.2], ...
     'filled','DisplayName','Start');
-scatter(map_axis,data.x(idx(end)),data.y(idx(end)),50,[0.85 0.15 0.1], ...
+scatter(map_axis,map_x(end),map_y(end),50,[0.85 0.15 0.1], ...
     'filled','DisplayName','End');
-axis(map_axis,'equal'); xlabel(map_axis,'X [m]'); ylabel(map_axis,'Y [m]');
+axis(map_axis,'equal');
+xlabel(map_axis,map_x_label); ylabel(map_axis,map_y_label);
 title(map_axis,'Prepared planar trajectory'); legend(map_axis,'Location','best');
 
 time_axes = gobjects(8,1);
@@ -164,6 +181,9 @@ for axis_idx = 1:numel(time_axes)
 end
 linkaxes(time_axes,'x');
 save_script_figures('visualize_data',data_figure);
+
+%% 
+
 
 %% LOCAL FUNCTIONS
 
