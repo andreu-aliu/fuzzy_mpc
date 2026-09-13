@@ -112,7 +112,7 @@ $$
 For each run it reports correlation, RMSE, bias, and 95th-percentile absolute
 rate error. A warning is issued when the correlation is below `0.8`, is not
 finite, or rate RMSE exceeds `0.15 rad/s`. Heading results from a warned run
-must be inspected with `visualize_data.m` before drawing conclusions.
+must be inspected with `visualize_raw_data.m` before drawing conclusions.
 
 All heading prediction errors are wrapped using
 
@@ -759,7 +759,8 @@ For example:
 ```text
 mtlb/plots/compare_models/one_step_model_errors.png
 mtlb/plots/simulate_mpc/closed_loop_aggregate_model_comparison.png
-mtlb/plots/visualize_data/physical_consistency.png
+mtlb/plots/visualize_raw_data/physical_consistency.png
+mtlb/plots/visualize_data/evaluation_run_01_trackdrive_track_4.png
 mtlb/plots/eefig_training/eefig_training_evolution.png
 ```
 
@@ -771,7 +772,8 @@ the latest result.
 
 `utils/save_script_figures.m` implements the shared export behavior. It is
 called after figures are complete by `compare_models`, each plot section of
-`simulate_mpc`, every plot section of `visualize_data`, the ANFIS and EEFig
+`simulate_mpc`, the prepared-data view in `visualize_data`, every diagnostic
+plot section of `visualize_raw_data`, the ANFIS and EEFig
 training/analysis scripts, both nonlinear physical-model identification
 scripts, and `simulator_error`. Iterative MPC debug figures are exported once
 at the end of `SIMULATE`, not at every controller iteration.

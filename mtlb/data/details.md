@@ -224,7 +224,7 @@ Each topic has its own ROS bag timestamp sequence. The reader performs these ope
 
 State signals share the `/as/c/state` timestamps. Measured steering, steering command, and torque-vectoring signals are interpolated from their own topic timestamps.
 
-The reader uses bag-recording timestamps rather than message header timestamps. `visualize_data.m` reports the raw timing and nearest-sample distances so timestamp quality can be inspected explicitly.
+The reader uses bag-recording timestamps rather than message header timestamps. `visualize_raw_data.m` reports the raw timing and nearest-sample distances so timestamp quality can be inspected explicitly.
 
 ## Automatic standstill trimming
 
@@ -302,7 +302,8 @@ Those operations belong to the relevant model-training or evaluation code. For e
 
 ## Data-quality validation
 
-Use `visualize_data.m` on representative runs before training. It checks or displays:
+Use `visualize_raw_data.m` on representative rosbags before regenerating the
+MAT files. It checks or displays:
 
 - Raw topic rates, duplicates, gaps, and resampling distance.
 - Finite values and consistent processed vector lengths.
@@ -313,6 +314,12 @@ Use `visualize_data.m` on representative runs before training. It checks or disp
 - Steering and vehicle-response lag estimates.
 - Measured yaw rate against the derivative of recorded planar heading.
 - Sensitivity of one-step targets to Savitzky-Golay window length.
+
+Use `visualize_data.m` after dataset preparation. It reads only
+`datasets_training.mat` and `datasets_evaluation.mat`, prints a detailed table
+for every saved run, and lets one prepared run (or a sample interval within
+it) be selected for a map-and-signals overview. This is the appropriate view
+for confirming exactly what the training and comparison scripts receive.
 
 For heading, verify that
 
