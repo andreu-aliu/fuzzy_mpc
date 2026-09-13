@@ -124,7 +124,9 @@ fprintf('Saved frozen offline EEFig model to %s\n', model_file);
 
 %% Model insights
 
-eefig_model_insights(learner, history, evaluation, prepared);
+insight_figures = eefig_model_insights( ...
+    learner,history,evaluation,prepared);
+save_script_figures('eefig_training',insight_figures);
 
 function evaluation = evaluateFrozen(learner, runs, scale_x, split_label)
 evaluation.runs = repmat(struct('measured',[],'predicted',[], ...

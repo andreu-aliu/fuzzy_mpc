@@ -745,6 +745,37 @@ scenario-level measurement because the dataset has no lap boundary indices.
 Consequently, the closed-loop summary is genuinely run-balanced, not
 lap-balanced.
 
+## Automatic plot export
+
+Every main plotting script automatically exports each completed figure as a
+200 dpi PNG under
+
+```text
+mtlb/plots/<generating-script>/
+```
+
+For example:
+
+```text
+mtlb/plots/compare_models/one_step_model_errors.png
+mtlb/plots/simulate_mpc/closed_loop_aggregate_model_comparison.png
+mtlb/plots/visualize_data/physical_consistency.png
+mtlb/plots/eefig_training/eefig_training_evolution.png
+```
+
+Names come from the MATLAB figure `Name` property and are normalized to
+lowercase filesystem-safe identifiers. If several figures in one export have
+the same name, deterministic `_02`, `_03`, ... suffixes are added. Running a
+script again replaces the corresponding existing PNG so the folder represents
+the latest result.
+
+`utils/save_script_figures.m` implements the shared export behavior. It is
+called after figures are complete by `compare_models`, each plot section of
+`simulate_mpc`, every plot section of `visualize_data`, the ANFIS and EEFig
+training/analysis scripts, both nonlinear physical-model identification
+scripts, and `simulator_error`. Iterative MPC debug figures are exported once
+at the end of `SIMULATE`, not at every controller iteration.
+
 ### Closed-loop model comparison section
 
 After storing the scenario results for every desired prediction model, run

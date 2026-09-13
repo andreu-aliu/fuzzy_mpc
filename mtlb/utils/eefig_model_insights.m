@@ -1,4 +1,5 @@
-function eefig_model_insights(learner, history, evaluation, prepared)
+function figure_handles = eefig_model_insights( ...
+        learner,history,evaluation,prepared)
 %EEFIG_MODEL_INSIGHTS Plot structure evolution and frozen evaluation quality.
 
 fprintf('\nEEFIG structure summary:\n');
@@ -28,7 +29,8 @@ granule_table = table(granule_id, admitted_samples, membership_mass, ...
     'Center_vx','Center_delta','CovarianceCondition'});
 disp(granule_table);
 
-figure('Name', 'EEFIG training evolution');
+figure_handles = gobjects(4,1);
+figure_handles(1) = figure('Name','EEFIG training evolution');
 layout = tiledlayout(3, 1, 'TileSpacing', 'compact');
 
 nexttile;
@@ -62,7 +64,7 @@ measured = [evaluation.runs.measured];
 predicted = [evaluation.runs.predicted];
 errors = predicted - measured;
 
-figure('Name', 'EEFIG frozen one-step evaluation');
+figure_handles(2) = figure('Name','EEFIG frozen one-step evaluation');
 tiledlayout(2, 2, 'TileSpacing', 'compact');
 
 nexttile;
@@ -101,14 +103,14 @@ xlabel('r prediction error [rad/s]');
 ylabel('Samples');
 grid on;
 
-figure('Name', 'EEFIG evaluation granule usage');
+figure_handles(3) = figure('Name','EEFIG evaluation granule usage');
 bar(granule_id, activation_count);
 xlabel('Granule');
 ylabel('Frozen evaluation activations');
 title('Winning granule on held-out samples');
 grid on;
 
-plotGranuleEllipsoids4D(learner, physical_scale);
+figure_handles(4) = plotGranuleEllipsoids4D(learner,physical_scale);
 end
 
 function plotIdentity(values)
@@ -119,7 +121,7 @@ end
 plot(limits, limits, 'k--', 'LineWidth', 1.0);
 end
 
-function plotGranuleEllipsoids4D(learner, physical_scale)
+function fig = plotGranuleEllipsoids4D(learner,physical_scale)
 %PLOTGRANULEELLIPSOIDS4D Visualize the 4-D admission ellipsoids.
 % The [vy r vx] projection is drawn in 3-D. Surface colour is the delta
 % coordinate on the boundary of the original 4-D ellipsoid. For a point
@@ -127,7 +129,7 @@ function plotGranuleEllipsoids4D(learner, physical_scale)
 % the conditional centre implied by the full covariance, so correlations
 % with steering are retained rather than discarded.
 
-figure('Name', 'EEFIG four-dimensional granules');
+fig = figure('Name','EEFIG four-dimensional granules');
 axes_handle = axes();
 hold(axes_handle, 'on');
 

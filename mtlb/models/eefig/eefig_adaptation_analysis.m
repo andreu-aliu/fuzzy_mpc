@@ -123,7 +123,8 @@ fprintf('New granules during adaptive propagation: %d\n', adaptive_created);
 %% Plots
 
 t = (0:numel(indices)-1) * Ts;
-figure('Name', 'EEFIG frozen versus adaptive propagation');
+adaptation_figure = figure( ...
+    'Name','EEFIG frozen versus adaptive propagation');
 tiledlayout(2, 1, 'TileSpacing', 'compact');
 
 nexttile;
@@ -152,6 +153,7 @@ xlabel('Time [s]');
 ylabel('r [rad/s]');
 legend('Location', 'best');
 grid on;
+save_script_figures('eefig_adaptation_analysis',adaptation_figure);
 
 function runs = buildEvaluationRuns(datasets)
 runs = repmat(struct('X',[],'U',[],'N',0), numel(datasets), 1);

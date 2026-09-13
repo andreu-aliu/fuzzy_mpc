@@ -1,4 +1,5 @@
-function anfis_model_insights(fis, Xn, trainError, valError, varargin)
+function figure_handles = anfis_model_insights( ...
+        fis,Xn,trainError,valError,varargin)
 
 p = inputParser;
 p.addParameter('inputLabels', {}, @(c) iscell(c) || isstring(c));
@@ -31,10 +32,13 @@ end
 fprintf("Number of rules: %d\n", numel(fis.Rules))
 showrule(fis)
 
+figure_handles = gobjects(nIn+1,1);
 for j = 1:nIn
-    figure(figBase + j);
+    figure_name = titlePrefix+inputLabels{j}+" membership";
+    figure_handles(j) = figure(figBase+j);
+    figure_handles(j).Name = char(figure_name);
     plotmf(fis,'input',j);
-    title(titlePrefix + inputLabels{j} + " membership");
+    title(figure_name);
     hold on;
     if ~isempty(Xn) && size(Xn,2) >= j
         histogram(Xn(:,j), 'Normalization', 'pdf', 'FaceAlpha',0.3,'EdgeColor','none');
@@ -42,7 +46,8 @@ for j = 1:nIn
     hold off;
 end
 
-figure(figBase + nIn + 1);
+figure_handles(nIn+1) = figure(figBase+nIn+1);
+figure_handles(nIn+1).Name = char(titlePrefix+"ANFIS Training Error");
 plot(trainError); hold on;
 plot(valError); hold off;
 xlabel('Epoch');

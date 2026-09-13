@@ -162,7 +162,7 @@ fprintf('Saved fitted parameters to %s\n', parameter_file);
 
 %% Fit diagnostics
 
-figure('Name', 'Nonlinear bicycle identification');
+identification_figure = figure('Name','Nonlinear bicycle identification');
 tiledlayout(2, 2, 'TileSpacing', 'compact');
 
 nexttile;
@@ -196,6 +196,7 @@ histogram(r_fitted - samples.r_next, 80);
 xlabel('r prediction error [rad/s]');
 ylabel('Samples');
 grid on;
+save_script_figures('nonlinear_bicycle_training',identification_figure);
 
 function residual = prediction_residuals( ...
     theta, samples, fixed, dt, vy_scale, r_scale)

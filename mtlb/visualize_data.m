@@ -125,7 +125,8 @@ fprintf(['Positive lag means the second signal follows the first. For physical '
 
 %% Overview
 
-figure('Name','Data overview','Color','w','Position',[100 100 1450 850]);
+overview_figure = figure('Name','Data overview','Color','w', ...
+    'Position',[100 100 1450 850]);
 overview_layout = tiledlayout(6,2,'TileSpacing','compact','Padding','compact');
 
 nexttile(overview_layout,[6 1]);
@@ -164,6 +165,7 @@ overview_axes(6) = nexttile(overview_layout);
 plot(t, r, 'LineWidth', 1);
 ylabel('r [rad/s]'); xlabel('Time [s]'); title('Yaw rate'); grid on;
 linkaxes(overview_axes,'x');
+save_script_figures('visualize_data',overview_figure);
 
 %% Raw timestamp plots
 
@@ -171,7 +173,8 @@ topic_names = ["State","Measured steering","Steering command","Torque vectoring"
 raw_times = {audit.raw.state.time, audit.raw.steering.time, ...
     audit.raw.steering_command.time, audit.raw.torque_vectoring.time};
 
-figure('Name','Raw timing audit','Color','w','Position',[120 120 1450 850]);
+timing_figure = figure('Name','Raw timing audit','Color','w', ...
+    'Position',[120 120 1450 850]);
 timing_layout = tiledlayout(3,2,'TileSpacing','compact','Padding','compact');
 for topic_idx = 1:numel(topic_names)
     nexttile(timing_layout);
@@ -193,6 +196,7 @@ yline(1000*Ts, ':r', 'Ts');
 xlabel('Time [s]'); ylabel('Nearest raw sample [ms]');
 title('Distance from each resampled point to the nearest raw message');
 legend('Location','best'); grid on;
+save_script_figures('visualize_data',timing_figure);
 
 %% Raw samples over resampled signals
 
@@ -210,7 +214,8 @@ else
     window_end = raw_comparison_window(2);
 end
 
-figure('Name','Raw versus resampled','Color','w','Position',[140 140 1450 850]);
+raw_figure = figure('Name','Raw versus resampled','Color','w', ...
+    'Position',[140 140 1450 850]);
 raw_layout = tiledlayout(4,1,'TileSpacing','compact','Padding','compact');
 raw_axes = gobjects(4,1);
 
@@ -240,10 +245,12 @@ legend('Linearly resampled','Raw'); grid on;
 
 linkaxes(raw_axes,'x');
 xlim(raw_axes(1), [window_start window_end]);
+save_script_figures('visualize_data',raw_figure);
 
 %% Physical consistency plots
 
-figure('Name','Physical consistency','Color','w','Position',[160 160 1450 850]);
+physical_figure = figure('Name','Physical consistency','Color','w', ...
+    'Position',[160 160 1450 850]);
 physical_layout = tiledlayout(2,2,'TileSpacing','compact','Padding','compact');
 
 nexttile(physical_layout); hold on;
@@ -269,10 +276,12 @@ scatter(ay_reconstructed, ay_measured, 7, 'filled', 'MarkerFaceAlpha',0.15);
 hold on; plot_identity_line(ay_reconstructed, ay_measured);
 xlabel('Reconstructed a_y [m/s^2]'); ylabel('Measured a_y [m/s^2]');
 title(sprintf('a_y: corr %.3f, NRMSE %.2f', ay_correlation, ay_nrmse)); grid on;
+save_script_figures('visualize_data',physical_figure);
 
 %% Recorded planar heading consistency
 
-figure('Name','Heading-rate check','Color','w','Position',[180 180 1400 700]);
+heading_figure = figure('Name','Heading-rate check','Color','w', ...
+    'Position',[180 180 1400 700]);
 heading_layout = tiledlayout(2,1,'TileSpacing','compact','Padding','compact');
 nexttile(heading_layout); hold on;
 plot(t, r, 'LineWidth', 1.1);
@@ -287,10 +296,12 @@ plot_identity_line(heading_rate, r);
 xlabel('d(heading)/dt [rad/s]'); ylabel('r [rad/s]'); grid on;
 title(sprintf('Body-yaw consistency: corr %.3f, NRMSE %.2f', ...
     heading_correlation, heading_nrmse));
+save_script_figures('visualize_data',heading_figure);
 
 %% ANFIS one-step targets and smoothing sensitivity
 
-figure('Name','Filtering and ANFIS targets','Color','w','Position',[200 200 1450 850]);
+filter_figure = figure('Name','Filtering and ANFIS targets','Color','w', ...
+    'Position',[200 200 1450 850]);
 filter_layout = tiledlayout(2,2,'TileSpacing','compact','Padding','compact');
 
 nexttile(filter_layout); hold on;
@@ -331,6 +342,7 @@ for tile_idx = 1:4
     grid(axis_handle,'on');
     legend(axis_handle,'Location','best');
 end
+save_script_figures('visualize_data',filter_figure);
 
 %% Lag-correlation plots
 
@@ -340,7 +352,8 @@ end
 [~, mz_rdot_curve] = lag_curve(data.mz, r_dot, max_lag_samples, Ts);
 [~, ay_curve] = lag_curve(ay_measured, ay_reconstructed, max_lag_samples, Ts);
 
-figure('Name','Lag correlations','Color','w','Position',[220 220 1450 800]);
+lag_figure = figure('Name','Lag correlations','Color','w', ...
+    'Position',[220 220 1450 800]);
 lag_layout = tiledlayout(2,2,'TileSpacing','compact','Padding','compact');
 plot_lag_tile(nexttile(lag_layout), lag_seconds, st_delta_curve, ...
     'Steering command -> measured steering');
@@ -350,6 +363,7 @@ plot_lag_tile(nexttile(lag_layout), lag_seconds, mz_rdot_curve, ...
     'Yaw moment -> yaw acceleration');
 plot_lag_tile(nexttile(lag_layout), lag_seconds, ay_curve, ...
     'Measured a_y -> reconstructed a_y');
+save_script_figures('visualize_data',lag_figure);
 
 %%
 

@@ -157,7 +157,8 @@ fprintf('Saved fitted parameters to %s\n', parameter_file);
 
 %% Fit diagnostics
 
-figure('Name', 'Nonlinear double-track identification');
+identification_figure = figure( ...
+    'Name','Nonlinear double-track identification');
 tiledlayout(2, 2, 'TileSpacing', 'compact');
 
 nexttile;
@@ -191,6 +192,8 @@ histogram(r_fitted - samples.r_next, 80);
 xlabel('r prediction error [rad/s]');
 ylabel('Samples');
 grid on;
+save_script_figures( ...
+    'nonlinear_double_track_training',identification_figure);
 
 function residual = prediction_residuals( ...
     theta, samples, fixed, dt, vy_scale, r_scale)

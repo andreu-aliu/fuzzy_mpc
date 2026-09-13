@@ -1,5 +1,8 @@
 % Simulate with same inputs the and compare with MPC model
 clear
+mtlb_dir = '/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb';
+cd(mtlb_dir);
+addpath(genpath(mtlb_dir));
 Np = 60;
 dt = 0.02;
 
@@ -113,7 +116,7 @@ delta_mpc = x_pred_comp(:, 5);
 
 
 % Plots
-figure()
+simulator_figure = figure('Name','Simulator and MPC consistency');
 tiledlayout(6,1)
 
 % Y
@@ -156,3 +159,4 @@ plot(t_full, delta_sim, 'b', t_full, delta_mat, 'r', t_full, delta_mpc, 'g')
 title('Delta')
 legend('sim','mat','mpc')
 grid on
+save_script_figures('simulator_error',simulator_figure);

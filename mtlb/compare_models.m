@@ -103,9 +103,12 @@ disp(groupedOneStepTable(one_step, runs, model_names, 'event'));
 fprintf('\nOne-step RMSE by track layout:\n');
 disp(groupedOneStepTable(one_step, runs, model_names, 'track_layout'));
 
+figures_before_plot = findall(groot,'Type','figure');
 plotOneStepSummary(one_step.summary, model_names, model_colors, cfg);
 plotOneStepResiduals(one_step, model_names, model_colors, cfg);
 plotPerRunOneStep(one_step, runs, model_names, model_colors, cfg);
+save_script_figures('compare_models',setdiff( ...
+    findall(groot,'Type','figure'),figures_before_plot));
 
 %% Systematic dynamics-only rolling propagation
 
@@ -136,10 +139,13 @@ fprintf('\nDynamics-only RMSE at the MPC horizon by track layout:\n');
 disp(groupedPropagationTable(dynamics, runs, model_names, ...
     cfg.focus_horizon, 'track_layout'));
 
+figures_before_plot = findall(groot,'Type','figure');
 plotPropagationCurves(dynamics.summary, model_names, model_colors, ...
     cfg.focus_horizon, 'Dynamics-only propagation', cfg);
 plotFocusAggregation(focus_dynamics, model_names, model_colors, ...
     'Dynamics-only propagation at MPC horizon', cfg);
+save_script_figures('compare_models',setdiff( ...
+    findall(groot,'Type','figure'),figures_before_plot));
 
 %% Separate steering-command/actuator diagnostic
 
@@ -161,10 +167,13 @@ if cfg.run_end_to_end
     disp(focus_end_to_end);
     fprintf('\nEnd-to-end numerical propagation failures:\n');
     disp(end_to_end.divergence);
+    figures_before_plot = findall(groot,'Type','figure');
     plotPropagationCurves(end_to_end.summary, model_names, model_colors, ...
         cfg.focus_horizon, 'End-to-end steering-actuator diagnostic', cfg);
     plotSteeringActuatorDiagnostic(end_to_end.summary, model_names, ...
         model_colors, cfg.focus_horizon, cfg);
+    save_script_figures('compare_models',setdiff( ...
+        findall(groot,'Type','figure'),figures_before_plot));
 end
 
 %% Frozen versus causally adaptive EEFig
@@ -208,19 +217,25 @@ if cfg.run_adaptive_eefig
         eefig_adaptive.new_granules, ...
         'VariableNames', {'Run','Event','NewGranules'}));
 
+    figures_before_plot = findall(groot,'Type','figure');
     plotAdaptiveEefig(one_step.summary(frozen_idx,:), ...
         eefig_adaptive.one_step_summary, dynamics.summary, ...
         eefig_adaptive.summary, model_colors(frozen_idx,:), ...
         cfg.focus_horizon, cfg);
+    save_script_figures('compare_models',setdiff( ...
+        findall(groot,'Type','figure'),figures_before_plot));
 end
 
 %% Selected propagation window
 
 selected_window = struct();
 if cfg.plot_selected_window
+    figures_before_plot = findall(groot,'Type','figure');
     selected_window = evaluateSelectedPropagationWindow(models,model_names, ...
         model_colors,runs,Ts,cfg,adaptive_color);
     plotSelectedPropagationWindow(selected_window);
+    save_script_figures('compare_models',setdiff( ...
+        findall(groot,'Type','figure'),figures_before_plot));
 end
 
 eefig_reset();

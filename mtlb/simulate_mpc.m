@@ -136,23 +136,47 @@ for scenario_idx = 1:numel(evaluation_runs)
 end
 fprintf('Completed %d MPC scenario(s).\n',numel(scenario_results));
 
+diagnostic_figures = gobjects(0,1);
+if debug_opts.enabled
+    debug_figure = findobj(groot,'Type','figure', ...
+        'Number',debug_opts.figure_id);
+    if ~isempty(debug_figure)
+        debug_figure.Name = 'MPC optimization debug';
+        diagnostic_figures(end+1,1) = debug_figure;
+    end
+end
+if comp_opts.enabled
+    comparison_figure = findobj(groot,'Type','figure', ...
+        'Number',comp_opts.figure_id);
+    if ~isempty(comparison_figure)
+        comparison_figure.Name = 'MPC model comparison debug';
+        diagnostic_figures(end+1,1) = comparison_figure;
+    end
+end
+save_script_figures('simulate_mpc',diagnostic_figures);
+
 %% PLOT INPUT DATA
 
 assert(exist('scenario_results','var')==1 && ~isempty(scenario_results), ...
     'Run SIMULATE before PLOT INPUT DATA.');
 results_to_plot = select_results(scenario_results,plot_run_indices);
+input_figures = gobjects(numel(results_to_plot),1);
 for plot_idx = 1:numel(results_to_plot)
-    plot_scenario_input(results_to_plot{plot_idx});
+    input_figures(plot_idx) = plot_scenario_input(results_to_plot{plot_idx});
 end
+save_script_figures('simulate_mpc',input_figures);
 
 %% PLOT RESULTS
 
 assert(exist('scenario_results','var')==1 && ~isempty(scenario_results), ...
     'Run SIMULATE before PLOT RESULTS.');
 results_to_plot = select_results(scenario_results,plot_run_indices);
+result_figures = gobjects(numel(results_to_plot),1);
 for plot_idx = 1:numel(results_to_plot)
-    plot_scenario_result(results_to_plot{plot_idx});
+    result_figures(plot_idx) = ...
+        plot_scenario_result(results_to_plot{plot_idx});
 end
+save_script_figures('simulate_mpc',result_figures);
 
 %% PERFORMANCE INSIGHTS
 
@@ -253,6 +277,7 @@ comparison_only_complete = false;
 if ~exist('mtlb_dir','var')
     mtlb_dir = '/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb';
 end
+addpath(genpath(mtlb_dir));
 if ~exist('results_database_file','var')
     results_database_file = fullfile(mtlb_dir,'mpc_results.mat');
 end
@@ -392,7 +417,7 @@ model_labels = comparison_table.Model;
 model_colors = closed_loop_model_colors(model_labels);
 x = (1:n_models).';
 
-figure('Name','Closed-loop aggregate model comparison', ...
+aggregate_figure = figure('Name','Closed-loop aggregate model comparison', ...
     'Position',[100 100 1500 850]);
 aggregate_layout = tiledlayout(2,2, ...
     'TileSpacing','compact','Padding','compact');
@@ -470,19 +495,21 @@ for run_idx = 1:numel(run_ids)
     end
 end
 
-figure('Name','Closed-loop per-run lateral RMSE', ...
+rmse_figure = figure('Name','Closed-loop per-run lateral RMSE', ...
     'Position',[120 120 1300 700]);
 h1 = heatmap(cellstr(model_labels),cellstr(run_labels),rmse_matrix);
 h1.Title = 'Lateral RMSE by held-out run [m]';
 h1.XLabel = 'Prediction model'; h1.YLabel = 'Evaluation scenario';
 h1.MissingDataLabel = 'Not evaluated';
 
-figure('Name','Closed-loop per-run deadline misses', ...
+deadline_figure = figure('Name','Closed-loop per-run deadline misses', ...
     'Position',[140 140 1300 700]);
 h2 = heatmap(cellstr(model_labels),cellstr(run_labels),deadline_matrix);
 h2.Title = 'Control deadline misses by held-out run [%]';
 h2.XLabel = 'Prediction model'; h2.YLabel = 'Evaluation scenario';
 h2.MissingDataLabel = 'Not evaluated';
+save_script_figures('simulate_mpc', ...
+    [aggregate_figure;rmse_figure;deadline_figure]);
 %%
 
 %% LOCAL FUNCTIONS
@@ -499,11 +526,11 @@ assert(isempty(missing), ...
 selected = results(ismember(available,run_indices));
 end
 
-function plot_scenario_input(result)
+function fig = plot_scenario_input(result)
 data = result.data;
 meas = result.meas;
 run_idx = result.evaluation_run;
-figure('Name',sprintf('Data check - run %d',run_idx), ...
+fig = figure('Name',sprintf('Data check - run %d',run_idx), ...
     'Position',[100 100 1200 600]);
 main_layout = tiledlayout(1,2);
 nexttile(main_layout,1); hold on; grid on; axis equal;
@@ -534,8 +561,8 @@ legend('Full measured position','Interval measured position', ...
 linkaxes(ax,'x');
 end
 
-function plot_scenario_result(result)
-figure('Name',sprintf('MPC Results - run %d',result.evaluation_run), ...
+function fig = plot_scenario_result(result)
+fig = figure('Name',sprintf('MPC Results - run %d',result.evaluation_run), ...
     'Position',[100 100 1200 800]);
 tiledlayout(3,1,'TileSpacing','compact','Padding','compact');
 ax1 = nexttile; hold on; grid on; axis equal;
