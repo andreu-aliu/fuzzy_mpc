@@ -414,10 +414,10 @@ figure states how many values are off scale and directs the reader to the full
 tables.
 
 The comparison also sweeps the LTV lateral-state spectral radius over speed.
-The present forward-Euler LTV model clamps its lateral scheduling speed to
-`3 m/s`, while retaining measured speed in global-position kinematics. The
-diagnostic prints measured speed, scheduled speed, Euler and exact spectral
-radii, the maximum Euler radius, and the fraction of evaluation samples that
+The LTV model clamps its lateral scheduling speed to `3 m/s`, while retaining
+measured speed in global-position kinematics. The diagnostic prints measured
+speed, scheduled speed, the rejected forward-Euler radius, the implemented
+exact-ZOH radius, their maxima, and the fraction of evaluation samples that
 activate the clamp.
 
 Output clamping is not used. Saturating predicted $v_y$ or $r$ would hide model
@@ -463,13 +463,16 @@ every model.
 
 ## Current results
 
-The following results were generated on 10 September 2026 with the current
-trained artifacts and `data/datasets_evaluation.mat`. The evaluation set
-contains 12 complete runs, 24,871 valid one-step transitions, and 1,215 paired
-rolling-window origins. These numbers are a reproducible snapshot of the
-current model and dataset versions, not permanent properties of the model
-families; this section must be regenerated after retraining a model, changing
-the dataset split, or changing preprocessing.
+The following results were regenerated on 14 September 2026 with the model
+artifacts currently on disk and `data/datasets_evaluation.mat`. The evaluation
+set contains 12 complete runs, 24,871 valid one-step transitions, and 1,215
+paired rolling-window origins. Each rolling origin is shared by every model.
+
+These numbers are a snapshot, not permanent properties of the model families.
+All ANFIS variants and EEFig were retrained from the current training MAT file
+on 14 September 2026. Both nonlinear physical-model trainers were also rerun;
+their multi-horizon candidates improved $v_y$ but worsened $r$ at 60 steps, so
+the two-state acceptance rule correctly retained the nominal parameter sets.
 
 ### Heading-signal validation
 
@@ -494,11 +497,11 @@ but this does not explain the large rate RMSE in several cornering runs.
 | ANFIS direct | 0.0410 | 0.0303 | 0.0379 | 0.0231 | -0.3% | 1.7% |
 | ANFIS delta | **0.0404** | **0.0279** | **0.0378** | **0.0229** | **1.2%** | **9.6%** |
 | ANFIS derivative | 0.0411 | **0.0279** | 0.0380 | **0.0229** | -0.5% | **9.6%** |
-| ANFIS LTV residual | 0.0477 | 0.0321 | 0.0455 | 0.0287 | -16.7% | -4.2% |
+| ANFIS LTV residual | 0.0418 | 0.0308 | 0.0380 | 0.0239 | -2.1% | -0.1% |
 | EEFig offline | 0.0488 | 0.0411 | 0.0440 | 0.0330 | -19.4% | -33.4% |
-| Nonlinear bicycle | 0.2739 | 0.0346 | 0.2575 | 0.0290 | -569.8% | -12.3% |
+| Nonlinear bicycle | 0.2814 | 0.0439 | 0.2658 | 0.0363 | -588.2% | -42.3% |
 | Nonlinear double track | 0.1836 | 0.0293 | 0.1551 | 0.0248 | -348.9% | 5.1% |
-| LTV MPC | 0.3312 | 0.0470 | 0.3201 | 0.0373 | -709.9% | -52.6% |
+| LTV MPC | 0.2260 | 0.0486 | 0.2144 | 0.0356 | -452.7% | -57.7% |
 | Persistence | 0.0409 | 0.0308 | 0.0383 | 0.0264 | 0% | 0% |
 
 At a 20 ms horizon, persistence is a demanding baseline because the measured
@@ -509,11 +512,18 @@ derivative ties its yaw-rate result but is marginally worse in lateral
 velocity. The direct model is effectively level with persistence in $v_y$.
 
 The physics-based models have unexpectedly large one-step $v_y$ errors. This
-does not by itself show that their recursive dynamics are poor: a constant
-measurement offset, state-definition mismatch, unmodelled sensor behaviour,
-or imperfect parameter identification can dominate a single 20 ms update.
-It does show that their absolute $v_y$ update should be reviewed before making
-a claim about physical fidelity from the one-step test.
+does not by itself show that their recursive dynamics are poor: parameter
+mismatch, the measured $v_y$ definition, sensor noise, or a small systematic
+one-step bias can dominate this metric. It does show that their absolute
+$v_y$ update and state conventions should be reviewed before claiming physical
+fidelity from the one-step result alone.
+
+The operating-condition plots show that the four ANFIS formulations remain
+close to the persistence baseline across the well-populated speed and steering
+bins. The physical-model $v_y$ residuals are much larger and generally grow
+with steering magnitude. Results above approximately `21 m/s` and at the
+largest steering magnitudes have little support, so isolated changes in those
+bins are not strong evidence of generalization or failure.
 
 ### Dynamics-only propagation at the MPC horizon
 
@@ -525,19 +535,20 @@ only the predicted dynamics for 60 steps (`1.2 s`).
 | ANFIS direct | 0.503 | 0.120 | **0.314** | 0.0849 | 33.4% | 85.0% | 100% |
 | ANFIS delta | 0.565 | 0.124 | 0.392 | 0.0871 | 25.2% | 84.4% | 100% |
 | ANFIS derivative | 0.702 | 0.142 | 0.532 | 0.0970 | 7.1% | 82.2% | 100% |
-| ANFIS LTV residual | 1.487 | 0.554 | 1.790 | 0.6111 | -96.9% | 30.6% | 99.84% |
+| ANFIS LTV residual | 1.014 | 0.312 | 1.158 | 0.3750 | -34.3% | 61.0% | 100% |
 | EEFig offline | 0.644 | 0.408 | 0.562 | 0.2552 | 14.7% | 48.9% | 100% |
-| Nonlinear bicycle | 0.432 | **0.0938** | 0.434 | **0.0666** | 42.8% | **88.2%** | 100% |
+| Nonlinear bicycle | **0.427** | **0.0928** | 0.431 | **0.0671** | **43.4%** | **88.4%** | 100% |
 | Nonlinear double track | 0.580 | 0.142 | 0.493 | 0.0925 | 23.2% | 82.2% | 100% |
-| LTV MPC | **0.427** | 0.0966 | 0.429 | 0.0705 | **43.5%** | 87.9% | 100% |
+| LTV MPC | **0.423** | 0.0962 | 0.428 | 0.0702 | **44.0%** | 87.9% | 100% |
 | Persistence | 0.755 | 0.798 | 0.517 | 0.4780 | 0% | 0% | 100% |
 
-The LTV model has the lowest sample-weighted $v_y$ error, while the nonlinear
-bicycle has the lowest yaw-rate error. Their results are very close: LTV is
-about `1.2%` better than the nonlinear bicycle in sample-weighted $v_y$, and
-the nonlinear bicycle is about `2.9%` better in sample-weighted $r$. The added
-double-track complexity does not improve the current result; it is worse than
-both bicycle formulations in both propagated states.
+Every model now remains bounded on every evaluated window. LTV has the lowest
+sample-weighted $v_y$ RMSE (`0.423 m/s`), while the nonlinear bicycle has the
+lowest sample-weighted yaw-rate RMSE (`0.0928 rad/s`). ANFIS direct has the
+lowest equal-run $v_y$ RMSE and remains the strongest data-driven recursive
+model. The nonlinear double-track model is worse than the simpler nonlinear
+bicycle in both aggregate propagated states, so its additional structure has
+not yet produced an overall accuracy benefit.
 
 The ranking changes under equal-run aggregation. ANFIS direct produces the
 lowest equal-run $v_y$ RMSE, whereas the nonlinear bicycle remains best for
@@ -552,10 +563,10 @@ The event results confirm that there is no universal winner:
 
 | Held-out event | Best $v_y$ model at 1.2 s | RMSE [m/s] | Best $r$ model at 1.2 s | RMSE [rad/s] |
 |---|---|---:|---|---:|
-| Trackdrive | LTV MPC | 0.468 | Nonlinear bicycle | 0.121 |
+| Trackdrive | LTV MPC | 0.461 | Nonlinear bicycle | 0.121 |
 | Skidpad | ANFIS direct | 0.237 | ANFIS delta | 0.0555 |
 | Acceleration | ANFIS direct | 0.248 | ANFIS direct | 0.0556 |
-| Autox | ANFIS direct | 0.340 | Nonlinear bicycle | 0.0607 |
+| Autox | ANFIS direct | 0.340 | Nonlinear bicycle | 0.0613 |
 
 These are window-weighted event results. Acceleration has only 77 rolling
 windows and very little lateral excitation, so it is useful as a low-excitation
@@ -563,27 +574,28 @@ sanity check rather than as decisive evidence about handling dynamics.
 
 ### Error growth, stability, and the one-step/propagation distinction
 
-All models except the ANFIS LTV-residual formulation remain within the
-configured numerical bounds in every evaluated window and horizon. The
-residual model first violates a bound at 40 steps and is bounded in `99.84%`
-of the 60-step windows. Its maximum 60-step errors reach `11.67 m/s` in $v_y$
-and `3.35 rad/s` in $r$. Its poor aggregate score is therefore not only a plot
-scaling artefact, and the model should not be considered MPC-ready in its
-current form.
+No model violates the configured numerical-error bounds in the regenerated
+comparison. In particular, the LTV model is bounded in all 1,215 rolling
+windows. The stability diagnostic explains the correction: the rejected
+20 ms forward-Euler transition has spectral radius `1.1181` at the `3 m/s`
+schedule floor, whereas the implemented exact affine ZOH transition has radius
+`0.1533`. Its maximum radius over the diagnostic speed grid is `0.8190`.
+Thus the former catastrophic LTV errors were numerical discretization errors,
+not evidence that the continuous-time bicycle equations were unstable.
 
-The current LTV low-speed treatment is numerically stable over the diagnostic
-grid: the maximum forward-Euler spectral radius is `0.9933`. The 3 m/s
-scheduling-speed clamp is active for `4.22%` of evaluation samples. Thus the
-previous low-speed numerical instability is controlled without saturating the
-predicted outputs.
+The retrained LTV-residual model is also bounded everywhere, but its 60-step
+sample RMSE (`1.014 m/s`, `0.312 rad/s`) is still worse than its exact-ZOH LTV
+base. A locally useful residual correction therefore does not automatically
+form a stable or accurate recursive correction.
 
 The most important cross-experiment result is that one-step accuracy does not
-predict recursive performance. The bicycle models are poor in one-step $v_y$
-but lead the sample-weighted 1.2 s comparison. Conversely, ANFIS delta is the
-best one-step model but is worse than ANFIS direct after recursive propagation.
-This supports reporting the complete error-versus-horizon curves and using the
-60-step result—not one-step training loss alone—when selecting a model for the
-MPC.
+predict recursive performance. LTV is much worse than persistence at one step
+but is best in sample-weighted $v_y$ at 60 steps. Conversely, ANFIS delta is
+the best one-step model but is worse than ANFIS direct after recursive
+propagation, and the ANFIS derivative formulation accumulates error fastest
+among the direct data-driven formulations. This supports reporting the complete
+error-versus-horizon curves and using the 60-step result—not one-step training
+loss alone—when selecting a model for the MPC.
 
 ### Frozen versus causally adaptive EEFig
 
@@ -601,47 +613,63 @@ heading RMSE by about `25%`, but worsens $v_y$ RMSE by about `79%`. The adaptive
 $v_y$ result is also `52.8%` worse than persistence.
 
 No new granules are created in any held-out run. Adaptation is still occurring
-through updates to existing granules, but the result indicates that the
-current antecedent coverage accepts all evaluation samples. The combination
-of better one-step fit and substantially worse recursive $v_y$ propagation
-suggests that the adapted local consequents accumulate bias or produce an
+through consequent and antecedent updates to existing granules, but structural
+evolution is not exercised by this split under the current thresholds. The
+combination of better one-step fit and substantially worse recursive $v_y$
+propagation suggests that the adapted local consequents accumulate bias or
+produce an
 unfavourable closed recursive map. Adaptive EEFig should therefore remain an
 experimental comparison, not the MPC model, until its per-granule updates,
 normalization, forgetting settings, coverage, and multi-step stability have
 been tuned against training-only sequences.
 
+The selected six-second trackdrive window reinforces this warning but is only
+a case study, not an aggregate metric. Causally adaptive EEFig departs strongly
+in both states; the ANFIS derivative and LTV-residual formulations also develop
+large biases. Several other models follow the change in yaw rate but retain a
+$v_y$ offset. Since six seconds is five times the MPC horizon, this plot is
+useful for diagnosing drift rather than ranking the controller models.
+
 ### Steering-actuator diagnostic
 
 At 60 steps every dynamic model has the same steering-position RMSE of
-`0.0234 rad`, because they share the same actuator formulation. The principal
-model ordering remains broadly similar to the measured-steering experiment,
-although individual lateral errors change. This result does not distinguish
-the vehicle models' steering behaviour and should remain separate from the
-thesis ranking. The measured-steering dynamics-only experiment is the correct
-primary comparison for the stated scope.
+`0.0234 rad`, because they share the same actuator formulation. The vehicle
+errors change because every model receives the same simulated rather than
+measured steering, but the test cannot distinguish their steering behaviour.
+It should remain separate from the thesis ranking. The measured-steering
+dynamics-only experiment is the correct primary comparison for the stated
+scope.
 
 ## Conclusions from the current analysis
 
-- For a sample-weighted 1.2 s MPC horizon, the LTV model is currently the best
-  $v_y$ predictor and the nonlinear bicycle is the best yaw-rate predictor.
-  Their performance is close enough that model complexity, linearization cost,
-  and future MPC integration should be considered alongside RMSE.
+- At the 1.2 s MPC horizon, exact-ZOH LTV gives the lowest sample-weighted
+  $v_y$ RMSE (`0.423 m/s`) and the nonlinear bicycle gives the lowest yaw-rate
+  RMSE (`0.0928 rad/s`). Their results are close enough that both are useful
+  physical references; the choice depends on state weighting and computational
+  requirements rather than a single universal winner.
 - ANFIS direct is the strongest data-driven recursive model and gives the best
   equal-run $v_y$ result. It is also the best $v_y$ model on skidpad,
   acceleration, and autox, but loses to the bicycle models on the long unseen
   `track_4` run. This makes generalization across layouts a central result, not
   a nuisance to average away.
 - The nonlinear double-track model does not presently justify its additional
-  complexity: it underperforms the nonlinear bicycle at the MPC horizon. Its
-  parameters and load-transfer/tire-force assumptions need further
-  identification before claiming that the higher-fidelity structure improves
-  prediction.
+  complexity in aggregate: it underperforms the nonlinear bicycle at the MPC
+  horizon. It does show isolated strengths, including one-step yaw rate and
+  track-specific cases, so the appropriate conclusion is that its current
+  identification is incomplete—not that double-track dynamics are inherently
+  inferior.
 - ANFIS delta is the best one-step formulation, but ANFIS direct propagates
   better. Model selection for MPC must therefore emphasize recursive horizon
   accuracy and boundedness rather than one-step RMSE alone.
-- The ANFIS LTV-residual model is both less accurate and the only formulation
-  to cross the numerical-error bounds. It requires retraining and stability
-  investigation before it can be included as a viable controller model.
+- The ANFIS LTV-residual model is bounded after retraining against the corrected
+  base, but it is less accurate recursively than plain LTV. It requires a
+  multi-step or stability-aware residual objective before it can be considered
+  a viable controller model.
+- The earlier catastrophic LTV result was caused by forward-Euler
+  discretization at the low-speed schedule clamp. Exact affine ZOH removes the
+  instability: all rollouts are bounded and LTV becomes the best aggregate
+  $v_y$ predictor at 60 steps. This is a concrete implementation bug, not a
+  property of the LTV model family.
 - Frozen EEFig is stable but not competitive with the leading models. Causal
   adaptation improves local and yaw-rate prediction, yet seriously degrades
   recursive $v_y$. The current adaptive configuration has not demonstrated
@@ -652,22 +680,30 @@ primary comparison for the stated scope.
 - These conclusions apply to the current held-out split. Because run duration,
   event counts, and track coverage are unbalanced, both sample-weighted and
   equal-run results must be reported, together with event/layout breakdowns.
+- Before freezing the thesis tables, resolve the heading-quality warnings and
+  record the dataset, artifact, and comparison configuration versions. The
+  current data-driven artifacts have already been retrained from the same
+  training MAT file and the LTV discretization has been corrected.
 
 ## Recommended interpretation order
 
 For a defensible model comparison:
 
-1. Resolve heading-quality warnings and confirm signal conventions.
-2. Inspect operating-condition bin support; do not interpret unsupported bins.
-3. Compare one-step RMSE, MAE, and $P_{95}$ against persistence.
-4. Check whether conclusions change between sample and equal-run aggregation.
-5. Inspect error growth across all horizons, emphasizing 60 steps.
-6. Check `ValidFraction`, `BoundedFraction`, maximum errors, and the divergence
+1. Confirm that every artifact was trained from the recorded training MAT file
+   version; this was done for the current 14 September 2026 snapshot.
+2. Confirm LTV discrete stability over its full scheduled-speed range; exact
+   affine ZOH is now implemented and passes the current diagnostic.
+3. Resolve heading-quality warnings and confirm signal conventions.
+4. Inspect operating-condition bin support; do not interpret unsupported bins.
+5. Compare one-step RMSE, MAE, and $P_{95}$ against persistence.
+6. Check whether conclusions change between sample and equal-run aggregation.
+7. Inspect error growth across all horizons, emphasizing 60 steps.
+8. Check `ValidFraction`, `BoundedFraction`, maximum errors, and the divergence
    table before ranking models by aggregate RMSE.
-7. Compare events and track layouts to identify domain-specific strengths.
-8. Use dynamics-only propagation for the principal vehicle-model ranking.
-9. Treat end-to-end actuator propagation as a separate diagnostic.
-10. Compare frozen and adaptive EEFig only after confirming causal ordering and
+9. Compare events and track layouts to identify domain-specific strengths.
+10. Use dynamics-only propagation for the principal vehicle-model ranking.
+11. Treat end-to-end actuator propagation as a separate diagnostic.
+12. Compare frozen and adaptive EEFig only after confirming causal ordering and
     independent reset between runs.
 
 A low one-step error does not guarantee good 60-step propagation. Conversely,

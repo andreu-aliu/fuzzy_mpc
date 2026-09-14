@@ -125,11 +125,13 @@ fprintf('\nDYNAMICS-ONLY PROPAGATION AT %d STEPS (%.2f s)\n', ...
 disp(focus_dynamics);
 fprintf('\nNumerical propagation failures (full values remain in tables):\n');
 disp(dynamics.divergence);
-fprintf('\nLTV forward-Euler lateral stability diagnostic:\n');
+fprintf('\nLTV lateral discretization stability diagnostic:\n');
 disp(ltv_stability.spectral_radius);
-fprintf(['Maximum spectral radius on the 0.1-30 m/s diagnostic grid: ' ...
-    '%.4f. Evaluation samples using the 3 m/s clamp: %.2f%%.\n'], ...
-    ltv_stability.maximum_euler_radius, ...
+fprintf(['Maximum implemented ZOH spectral radius on the 0.1-30 m/s ' ...
+    'diagnostic grid: %.4f (forward Euler would reach %.4f). ' ...
+    'Evaluation samples using the 3 m/s clamp: %.2f%%.\n'], ...
+    ltv_stability.maximum_implemented_radius, ...
+    ltv_stability.maximum_forward_euler_radius, ...
     100*ltv_stability.evaluation_fraction_clamped);
 
 fprintf('\nDynamics-only RMSE at the MPC horizon by event:\n');
@@ -658,24 +660,30 @@ end
 function diagnostic = ltvEulerStabilityDiagnostic(runs,Ts)
 speeds = [0.2;1;2;3;5;10;20];
 scheduled_speeds = max(speeds,3);
-euler_radius = nan(size(speeds)); exact_radius = nan(size(speeds));
+euler_radius = nan(size(speeds)); implemented_radius = nan(size(speeds));
 for i = 1:numel(speeds)
-    [Ad,~,~] = ltv_matrix(zeros(6,1),0,speeds(i),Ts);
+    [Ad,~,~,Ac] = ltv_matrix(zeros(6,1),0,speeds(i),Ts);
     Ad_lat = Ad([2,4],[2,4]);
-    Ac_lat = (Ad_lat-eye(2))/Ts;
-    euler_radius(i) = max(abs(eig(Ad_lat)));
-    exact_radius(i) = max(abs(eig(expm(Ac_lat*Ts))));
+    Ac_lat = Ac([2,4],[2,4]);
+    euler_radius(i) = max(abs(eig(eye(2)+Ac_lat*Ts)));
+    implemented_radius(i) = max(abs(eig(Ad_lat)));
 end
-grid_speed = linspace(0.1,30,3000)'; grid_radius = nan(size(grid_speed));
+grid_speed = linspace(0.1,30,3000)';
+grid_euler_radius = nan(size(grid_speed));
+grid_implemented_radius = nan(size(grid_speed));
 for i = 1:numel(grid_speed)
-    [Ad,~,~] = ltv_matrix(zeros(6,1),0,grid_speed(i),Ts);
-    grid_radius(i) = max(abs(eig(Ad([2,4],[2,4]))));
+    [Ad,~,~,Ac] = ltv_matrix(zeros(6,1),0,grid_speed(i),Ts);
+    grid_implemented_radius(i) = max(abs(eig(Ad([2,4],[2,4]))));
+    grid_euler_radius(i) = max(abs(eig( ...
+        eye(2)+Ac([2,4],[2,4])*Ts)));
 end
 all_vx = vertcatRuns(runs,'vx',false);
 diagnostic.spectral_radius = table(speeds,scheduled_speeds,euler_radius, ...
-    exact_radius,'VariableNames',{'MeasuredLongitudinalSpeed', ...
-    'ScheduledDynamicSpeed','EulerSpectralRadius','ExactSpectralRadius'});
-diagnostic.maximum_euler_radius = max(grid_radius);
+    implemented_radius,'VariableNames',{'MeasuredLongitudinalSpeed', ...
+    'ScheduledDynamicSpeed','ForwardEulerSpectralRadius', ...
+    'ImplementedZOHSpectralRadius'});
+diagnostic.maximum_forward_euler_radius = max(grid_euler_radius);
+diagnostic.maximum_implemented_radius = max(grid_implemented_radius);
 diagnostic.evaluation_fraction_clamped = mean(all_vx<3);
 end
 

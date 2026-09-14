@@ -110,7 +110,7 @@ $B_f=B_r=10.5507$, $C_f^{\mathrm{tyre}}=C_r^{\mathrm{tyre}}=1.2705$,
 $D_f^{\mathrm{tyre}}=1104\ \mathrm N$, and
 $D_r^{\mathrm{tyre}}=1281.5\ \mathrm N$.
 
-The forward-Euler implementation uses the low-speed scheduling clamp
+The implementation uses the low-speed scheduling clamp
 
 $$
 v_{x,d}=\max(v_x,3\ \mathrm{m/s}).
@@ -134,7 +134,7 @@ $$
 The $-v_{x,d}r$ term is the body-frame Coriolis contribution under this
 low-speed approximation. Measured $v_x$ remains in the global $y$ kinematics;
 only the lateral dynamic scheduling value is clamped. Nominal parameters
-are $m=215\ \mathrm{kg}$, $I_z=188\ \mathrm{kg\,m^2}$, and
+are $m=207\ \mathrm{kg}$, $I_z=129.024\ \mathrm{kg\,m^2}$, and
 $l_f=l_r=0.765\ \mathrm m$.
 
 ### Local affine form
@@ -162,12 +162,20 @@ c_y=v_x\sin\bar\psi+\bar v_y\cos\bar\psi
 -(v_x\cos\bar\psi-\bar v_y\sin\bar\psi)\bar\psi.
 $$
 
-This affine term makes the approximation exact at the operating point.
-Forward-Euler discretization gives
+This affine term makes the continuous approximation exact at the operating
+point. The complete local affine system is discretized by augmenting the
+steering input and affine offset as held inputs:
 
 $$
-A_d=I+T_sA_c,\qquad B_d=T_sB_c,\qquad C_d=T_sC_c.
+\exp\!\left(
+T_s\begin{bmatrix}A_c&B_c&C_c\\0&0&0\\0&0&0\end{bmatrix}
+\right)
+=\begin{bmatrix}A_d&B_d&C_d\\0&1&0\\0&0&1\end{bmatrix}.
 $$
+
+This exact zero-order-hold discretization replaces forward Euler. At the
+3 m/s speed floor and $T_s=0.02$ s, forward Euler made the lateral subsystem
+numerically unstable even though the continuous-time system was stable.
 
 The model is LTV because $v_x$, $\bar v_y$, and $\bar\psi$ can change at each
 prediction step.
@@ -228,13 +236,20 @@ $$
 \theta=\begin{bmatrix}B_f&B_r&D_f&D_r\end{bmatrix}
 $$
 
-by bounded nonlinear least squares against measured one-step
-$v_y(k+1)$ and $r(k+1)$. The residuals are normalized by each target's standard
-deviation. Each run receives equal total least-squares weight through a
-per-sample factor $1/\sqrt{N_{\mathrm{run}}}$, and each run is capped at 3000
-uniformly selected samples. Samples below $2\ \mathrm{m/s}$ are excluded.
-The fitted parameters are stored in `nonlinear_bicycle_params.mat`; nominal
-defaults are used when that file does not exist.
+by bounded nonlinear least squares against measured-steering rollouts at
+`[1, 10, 30, 60]` steps. The residuals are normalized by each state's training
+standard deviation. Every run contributes at most 12 uniformly spaced windows
+and receives equal total squared weight through the factor
+$1/\sqrt{N_{\mathrm{windows,run}}}$. Windows containing speeds below
+$2\ \mathrm{m/s}$ are excluded.
+
+The trainer evaluates the candidate and nominal parameter sets at 60 steps.
+A candidate is saved for runtime only when it reduces both $v_y$ and $r$ RMSE;
+this prevents a scalar average from hiding a regression in one controller
+state. The candidate, nominal errors, optimizer status, and acceptance decision
+remain in `fit_info` even when the nominal set is selected. The selected
+parameters are stored in `nonlinear_bicycle_params.mat`; nominal defaults are
+used when that file does not exist.
 
 ### Closed-loop simulation wrapper
 
@@ -383,8 +398,9 @@ $$
 \theta=\begin{bmatrix}B_f&B_r&\mu_f&\mu_r\end{bmatrix}
 $$
 
-using the same balanced, bounded one-step least-squares structure as the
-nonlinear bicycle model. Track widths, centre-of-gravity height, load
+using the same balanced, bounded multi-horizon least-squares and two-state
+60-step acceptance rule as the nonlinear bicycle model. Track widths,
+centre-of-gravity height, load
 sensitivity, $C_f$, and $C_r$ remain fixed at their nominal values. Fitted
 parameters are stored in `nonlinear_double_track_params.mat`.
 
@@ -908,13 +924,13 @@ offline model remain unchanged.
   windows, or modify reported metrics. Figures alone use a robust normal-scale
   axis when a value exceeds ten times the median plotted value; the annotation
   reports how many values are off scale and the tables retain the full values.
-- The comparison prints a speed sweep of the LTV lateral-state spectral radius.
-  The unclamped forward-Euler system at $T_s=0.02$ s becomes unstable below
-  approximately 3 m/s. The current first-stage mitigation clamps the lateral
-  scheduling speed to 3 m/s, while leaving outputs unconstrained so any
-  remaining divergence stays visible. `anfis_residuals` uses this same LTV
-  base. Because changing the base changes its residual definition, that ANFIS
-  model should be retrained before its final thesis comparison.
+- The comparison prints a speed sweep of the LTV lateral-state spectral radius
+  for both the implemented exact ZOH discretization and the rejected
+  forward-Euler alternative. The lateral scheduling speed is floored at
+  3 m/s, while outputs remain unconstrained so any remaining divergence stays
+  visible. `anfis_residuals` uses this same LTV base. Because changing the base
+  changes its residual definition, that ANFIS model must be retrained after a
+  discretization change.
 - The nonlinear bicycle and double-track models are propagation models, but
   they do not currently expose an analytic local linearization for MPC.
 - `ltv`, `anfis_delta`, `anfis_direct`, `anfis_dot`, `eefig`, and the matrix
