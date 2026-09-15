@@ -840,8 +840,7 @@ deliberately receive different controller keys and are never combined. The summa
 `ScenarioCoveragePercent`; thesis-level aggregate results should only be used
 when this is 100%. Its principal lateral metric is the equal-run mean of the
 run RMSE values. It also reports the median and worst run and a sample-weighted
-RMSE, together with model error, computation time, deadline misses, and solver
-failures.
+RMSE, together with model error, computation time, and solver failures.
 
 `DeclaredLaps` remains metadata only. A ten-lap run still produces one
 scenario-level measurement because the dataset has no lap boundary indices.
@@ -909,12 +908,96 @@ The section produces:
 
 - a ranked numerical table with coverage, equal-run and sample-weighted
   lateral RMSE, median and worst-run RMSE, tail error, model error,
-  computation time, deadline misses, and solver failures;
+  computation time, and solver failures;
 - an aggregate figure comparing tracking accuracy, tail error, online time,
   and the accuracy/computation trade-off;
 - a run-by-model lateral-RMSE heatmap;
-- a run-by-model deadline-miss heatmap.
+- a run-by-model solver-failure heatmap.
 
 The equal-run lateral RMSE is the principal ranking metric. The per-run
 heatmap and worst-run values must be inspected before accepting that ranking,
 because an aggregate improvement can hide failure on one event or layout.
+
+### Closed-loop results: common 60-step setup
+
+The current database contains a complete screening benchmark for all seven
+controller variants. Every variant uses the same nonlinear-bicycle plant,
+`60`-sample (`1.2 s`) prediction horizon, weights, constraints, reference
+construction, and all `12` held-out runs. Each scenario starts after the same
+`2.0 s` trim and propagates `50` consecutive control samples (`1.0 s`). Thus,
+the comparison has 100% run coverage and is balanced by run, but it represents
+the same initial one-second interval of each run rather than each complete
+run. The numerical results are stored in `mpc_results.mat`.
+
+| Prediction model | Equal-run lateral RMSE [m] | Sample-weighted RMSE [m] | Median run RMSE [m] | Worst run RMSE [m] | Mean run P95 [m] | Worst absolute error [m] | Solver failures |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| LTV | **0.0390** | **0.0437** | **0.0379** | 0.0899 | **0.0698** | 0.1910 | **0** |
+| ANFIS LTV residual | 0.0401 | 0.0445 | 0.0388 | **0.0880** | 0.0720 | **0.1867** | **0** |
+| ANFIS derivative | 0.0600 | 0.0631 | 0.0567 | 0.0886 | 0.1020 | 0.2514 | 6 |
+| ANFIS direct | 0.0834 | 0.0898 | 0.0847 | 0.1692 | 0.1411 | 0.2904 | **0** |
+| ANFIS increment | 0.0850 | 0.0890 | 0.0871 | 0.1227 | 0.1482 | 0.3180 | 2 |
+| EEFig adaptive | 0.0950 | 0.1079 | 0.0936 | 0.1803 | 0.1775 | 0.4174 | 2 |
+| EEFig frozen | 0.1567 | 0.1957 | 0.1084 | 0.3713 | 0.3084 | 0.7823 | 2 |
+
+![Closed-loop aggregate model comparison](plots/simulate_mpc/closed_loop_aggregate_model_comparison.png)
+
+*Thesis plot name: **Closed-loop tracking accuracy and computational trade-off across prediction models** (`closed_loop_aggregate_model_comparison.png`).*
+
+The principal closed-loop result is that the plain LTV controller is the best
+overall model in this setup. The residual correction is numerically close
+at the aggregate level: its equal-run RMSE is only about `3.0%` higher, while
+its worst-run RMSE and worst absolute error are slightly lower. This makes the
+residual model competitive, but the present benchmark does not demonstrate a
+meaningful global tracking improvement over LTV. The result agrees with the
+open-loop analysis: residual learning can refine the physical baseline, but
+it does not automatically create a better controller.
+
+The derivative ANFIS is the strongest stand-alone ANFIS formulation in
+aggregate, but its six solver failures all occur in skidpad run 2. The direct
+and increment formulations have more than twice the equal-run tracking RMSE
+of LTV. During their MPC rollouts, the ANFIS operating points repeatedly reach
+the boundary of the training domain, particularly in steering and, for some
+windows, lateral velocity or yaw rate. Input clamping prevents unrestricted
+extrapolation but does not remove the resulting model bias inside the
+optimizer.
+
+Online EEFig adaptation clearly improves the frozen model: equal-run RMSE
+falls from `0.1567 m` to `0.0950 m`, a reduction of about `39%`. The benefit is
+not uniform, however. Mean event-level RMSE changes from `0.150` to `0.032 m`
+on skidpad and from `0.280` to `0.123 m` on acceleration, but rises from
+`0.0868` to `0.0912 m` on trackdrive and from `0.0744` to `0.0983 m` on autox.
+The conclusion is therefore that causal adaptation helps under some domain
+shifts, but the current update policy is not yet robust enough to guarantee an
+improvement on every run.
+
+![Closed-loop per-run lateral RMSE](plots/simulate_mpc/closed_loop_per_run_lateral_rmse.png)
+
+*Thesis plot name: **Closed-loop lateral RMSE by held-out run and prediction model** (`closed_loop_per_run_lateral_rmse.png`).*
+
+The run heatmap is essential to this interpretation. It shows that no single
+data-driven model dominates every scenario: adaptive EEFig is best on both
+skidpad runs, frozen EEFig is best on autox run 9, and LTV or its residual
+correction is strongest in most other cases. The large frozen-EEFig errors on
+acceleration runs 5--7 explain why its aggregate score is poor despite good
+performance on some autox data.
+
+![Closed-loop solver failures](plots/simulate_mpc/closed_loop_per_run_solver_failures.png)
+
+*Thesis plot name: **MPC solver failures by held-out run and prediction model** (`closed_loop_per_run_solver_failures.png`).*
+
+Solver robustness separates the two leading controllers from the alternatives:
+LTV and ANFIS LTV residual complete all `600` control optimizations without a
+solver failure. ANFIS derivative records six failures, ANFIS increment two,
+and each EEFig mode two. Absolute MATLAB execution times are not treated as a
+deployment deadline result because the production controller will run in C++.
+Their relative ordering is still useful: the mean MATLAB MPC times are about
+`88 ms` for LTV, `92 ms` for the residual model, `108--127 ms` for the other
+ANFIS variants, `140 ms` for adaptive EEFig, and `182 ms` for frozen EEFig.
+
+Because the screening interval has only `50` control transitions, the
+database's retrospective 60-step model-error field is undefined for this
+group. Prediction fidelity must therefore be taken from the systematic
+open-loop rolling-window comparison above. A final closed-loop claim should
+repeat this exact controller grouping with a longer cap or complete runs;
+the current results support model selection and failure analysis, but should
+not be presented as full-lap closed-loop validation.

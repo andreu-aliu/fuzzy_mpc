@@ -14,6 +14,27 @@ trim_start_seconds = 2.0;
 trim_end_seconds = 0.5;
 max_mpc_windows_per_run = 200; % Inf evaluates the complete run
 
+% Optional scenario overrides used by automated comparison runs. Keeping
+% these in SETUP preserves the section-by-section execution workflow.
+batch_run_selection = string(getenv('FUZZY_MPC_RUN_SELECTION'));
+if strlength(batch_run_selection)>0
+    if strcmpi(batch_run_selection,"all")
+        run_selection = "all";
+    else
+        run_selection = str2num(batch_run_selection); %#ok<ST2NM>
+        assert(~isempty(run_selection), ...
+            'FUZZY_MPC_RUN_SELECTION must be "all" or numeric indices.');
+    end
+end
+batch_max_windows = string(getenv('FUZZY_MPC_MAX_WINDOWS'));
+if strlength(batch_max_windows)>0
+    max_mpc_windows_per_run = str2double(batch_max_windows);
+    assert(isfinite(max_mpc_windows_per_run) && ...
+        max_mpc_windows_per_run>=1 && ...
+        max_mpc_windows_per_run==fix(max_mpc_windows_per_run), ...
+        'FUZZY_MPC_MAX_WINDOWS must be a positive integer.');
+end
+
 % Used only when use_full_run is false.
 idx_start = 3000;
 window_sample_count = 500;
@@ -119,6 +140,19 @@ params.min_st = -0.38;
 params.max_st = 0.38;
 params.max_delta = 0.45;
 params.max_st_rate = 1.396;
+
+% Optional model overrides used by automated comparison runs. Interactive
+% defaults above remain unchanged.
+batch_model = string(getenv('FUZZY_MPC_MODEL'));
+if strlength(batch_model)>0
+    params.model = batch_model;
+end
+batch_eefig_adaptive = string(getenv('FUZZY_MPC_EEFIG_ADAPTIVE'));
+if strlength(batch_eefig_adaptive)>0
+    assert(any(strcmpi(batch_eefig_adaptive,["true","false","1","0"])), ...
+        'FUZZY_MPC_EEFIG_ADAPTIVE must be true, false, 1, or 0.');
+    params.eefig_adaptive = any(strcmpi(batch_eefig_adaptive,["true","1"]));
+end
 
 %% SIMULATE
 
@@ -272,7 +306,7 @@ disp(mpc_results_summary(ismember( ...
 % (different horizons, weights, plants, window caps, etc.), [] selects the
 % most recently updated experiment containing at least two model variants.
 comparison_group_id = [];
-comparison_only_complete = false;
+comparison_only_complete = true;
 
 if ~exist('mtlb_dir','var')
     mtlb_dir = '/home/andreu/ros_ws/src/as/control/fuzzy_mpc/mtlb';
@@ -409,11 +443,11 @@ display_columns = {'Model','ScenarioCount','ExpectedScenarioCount', ...
     'WorstRunLateralRMSE_m','MeanRunLateralP95_m', ...
     'WorstAbsoluteLateralError_m','RunBalancedMeanModelError', ...
     'RunBalancedMeanMPCTime_ms','MeanRunMPCTimeP95_ms', ...
-    'WorstOnlineCycleTime_ms','RunBalancedDeadlineMissPercent', ...
-    'TotalSolverFailures'};
+    'WorstOnlineCycleTime_ms','TotalSolverFailures'};
 disp(comparison_table(:,display_columns));
 
 model_labels = comparison_table.Model;
+model_plot_labels = pretty_model_labels(model_labels);
 model_colors = closed_loop_model_colors(model_labels);
 x = (1:n_models).';
 
@@ -432,8 +466,9 @@ plot(ax1,x,comparison_table.MedianRunLateralRMSE_m,'k^', ...
     'MarkerFaceColor',[0.8 0.8 0.8],'DisplayName','Median run RMSE');
 plot(ax1,x,comparison_table.WorstRunLateralRMSE_m,'kx', ...
     'LineWidth',1.8,'MarkerSize',8,'DisplayName','Worst run RMSE');
-ylabel(ax1,'Lateral error [m]'); title(ax1,'Closed-loop tracking accuracy');
-legend(ax1,'Location','best'); set_model_ticks(ax1,model_labels);
+ylabel(ax1,'Lateral error [m]');
+title(ax1,'Tracking: bar mean, o weighted, ^ median, x worst run');
+set_model_ticks(ax1,model_plot_labels);
 
 ax2 = nexttile(aggregate_layout); hold(ax2,'on'); grid(ax2,'on');
 b2 = bar(ax2,x,comparison_table.MeanRunLateralP95_m,0.65, ...
@@ -442,8 +477,8 @@ b2.CData = model_colors;
 plot(ax2,x,comparison_table.WorstAbsoluteLateralError_m,'kx', ...
     'LineWidth',1.8,'MarkerSize',8,'DisplayName','Worst absolute error');
 ylabel(ax2,'Absolute lateral error [m]');
-title(ax2,'Tail and worst-case tracking error');
-legend(ax2,'Location','best'); set_model_ticks(ax2,model_labels);
+title(ax2,'Tail error: bar mean-run P95, x worst absolute');
+set_model_ticks(ax2,model_plot_labels);
 
 ax3 = nexttile(aggregate_layout); hold(ax3,'on'); grid(ax3,'on');
 b3 = bar(ax3,x,comparison_table.RunBalancedMeanMPCTime_ms,0.65, ...
@@ -453,15 +488,16 @@ plot(ax3,x,comparison_table.MeanRunMPCTimeP95_ms,'ko', ...
     'MarkerFaceColor','w','DisplayName','Mean run P95');
 plot(ax3,x,comparison_table.WorstOnlineCycleTime_ms,'kx', ...
     'LineWidth',1.8,'MarkerSize',8,'DisplayName','Worst online cycle');
-ylabel(ax3,'Computation time [ms]'); title(ax3,'Online computation');
-legend(ax3,'Location','best'); set_model_ticks(ax3,model_labels);
+ylabel(ax3,'Computation time [ms]');
+title(ax3,'Computation: bar mean, o mean-run P95, x worst cycle');
+set_model_ticks(ax3,model_plot_labels);
 
 ax4 = nexttile(aggregate_layout); hold(ax4,'on'); grid(ax4,'on');
 for model_idx = 1:n_models
     scatter(ax4,comparison_table.RunBalancedMeanMPCTime_ms(model_idx), ...
         comparison_table.RunBalancedLateralRMSE_m(model_idx),90, ...
         model_colors(model_idx,:),'filled','DisplayName', ...
-        model_labels(model_idx));
+        model_plot_labels(model_idx));
 end
 xlabel(ax4,'Mean MPC computation time [ms]');
 ylabel(ax4,'Equal-run lateral RMSE [m]');
@@ -476,7 +512,7 @@ scenario_database = comparison_database(scenario_rows,:);
 run_ids = unique(scenario_database.EvaluationRun,'sorted');
 run_labels = strings(numel(run_ids),1);
 rmse_matrix = NaN(numel(run_ids),n_models);
-deadline_matrix = NaN(numel(run_ids),n_models);
+solver_failure_matrix = NaN(numel(run_ids),n_models);
 for run_idx = 1:numel(run_ids)
     representative = scenario_database( ...
         scenario_database.EvaluationRun==run_ids(run_idx),:);
@@ -489,27 +525,27 @@ for run_idx = 1:numel(run_ids)
             assert(nnz(row)==1,'Duplicate model/run result in database.');
             rmse_matrix(run_idx,model_idx) = ...
                 scenario_database.LateralRMSE_m(row);
-            deadline_matrix(run_idx,model_idx) = ...
-                scenario_database.DeadlineMissPercent(row);
+            solver_failure_matrix(run_idx,model_idx) = ...
+                scenario_database.SolverFailures(row);
         end
     end
 end
 
 rmse_figure = figure('Name','Closed-loop per-run lateral RMSE', ...
     'Position',[120 120 1300 700]);
-h1 = heatmap(cellstr(model_labels),cellstr(run_labels),rmse_matrix);
+h1 = heatmap(cellstr(model_plot_labels),cellstr(run_labels),rmse_matrix);
 h1.Title = 'Lateral RMSE by held-out run [m]';
 h1.XLabel = 'Prediction model'; h1.YLabel = 'Evaluation scenario';
 h1.MissingDataLabel = 'Not evaluated';
 
-deadline_figure = figure('Name','Closed-loop per-run deadline misses', ...
+solver_figure = figure('Name','Closed-loop per-run solver failures', ...
     'Position',[140 140 1300 700]);
-h2 = heatmap(cellstr(model_labels),cellstr(run_labels),deadline_matrix);
-h2.Title = 'Control deadline misses by held-out run [%]';
+h2 = heatmap(cellstr(model_plot_labels),cellstr(run_labels),solver_failure_matrix);
+h2.Title = 'MPC solver failures by held-out run';
 h2.XLabel = 'Prediction model'; h2.YLabel = 'Evaluation scenario';
 h2.MissingDataLabel = 'Not evaluated';
 save_script_figures('simulate_mpc', ...
-    [aggregate_figure;rmse_figure;deadline_figure]);
+    [aggregate_figure;rmse_figure;solver_figure]);
 %%
 
 %% LOCAL FUNCTIONS
@@ -618,6 +654,13 @@ ax.XTick = 1:numel(labels);
 ax.XTickLabel = cellstr(labels);
 ax.XTickLabelRotation = 20;
 ax.TickLabelInterpreter = 'none';
+end
+
+function labels = pretty_model_labels(labels)
+labels = strrep(string(labels),'_',' ');
+labels = replace(labels,'anfis','ANFIS');
+labels = replace(labels,'eefig','EEFIG');
+labels = replace(labels,'ltv','LTV');
 end
 
 function database = upgrade_results_database(database,result_template)

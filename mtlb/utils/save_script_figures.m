@@ -30,6 +30,15 @@ saved_files = strings(numel(figure_handles),1);
 used_names = containers.Map('KeyType','char','ValueType','double');
 for figure_idx = 1:numel(figure_handles)
     fig = figure_handles(figure_idx);
+    % Export with a reproducible light appearance, independently of the
+    % MATLAB desktop theme used while generating the figure.
+    if exist('theme','file')==2
+        theme(fig,'light');
+    else
+        fig.Color = 'w';
+        axes_handles = findall(fig,'Type','axes');
+        set(axes_handles,'Color','w','XColor','k','YColor','k');
+    end
     figure_name = string(fig.Name);
     if strlength(strtrim(figure_name))==0
         figure_name = infer_figure_name(fig);

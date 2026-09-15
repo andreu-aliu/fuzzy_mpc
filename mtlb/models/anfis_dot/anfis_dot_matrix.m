@@ -35,7 +35,8 @@ X_in = [X_pred(2) X_pred(4) vx X_pred(5)];
 mask_low  = X_in < xmin;
 mask_high = X_in > xmax;
 
-if any(mask_low) || any(mask_high)
+report_extrapolation = strcmpi(getenv('FUZZY_MPC_REPORT_EXTRAPOLATION'),'true');
+if report_extrapolation && (any(mask_low) || any(mask_high))
 
     fprintf('\n===== ANFIS EXTRAPOLATION DETECTED =====\n');
 
