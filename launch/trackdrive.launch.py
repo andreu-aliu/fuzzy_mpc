@@ -1,4 +1,5 @@
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
@@ -16,6 +17,7 @@ def generate_launch_description():
     dyn_file    = os.path.join(pkg_share, 'config', 'dyn_trackdrive.yaml')
 
     return LaunchDescription([
+        DeclareLaunchArgument('model', default_value='ltv'),
         Node(
             package='fuzzy_mpc',
             executable='fuzzy_mpc',
@@ -28,6 +30,7 @@ def generate_launch_description():
                 params_file,                        # Generic parameters of fuzzy_mpc
                 dyn_file,                           # Specific event parameters
                 {'ws_path': ws_path},               # Set workspace path
+                {'MPC.model': LaunchConfiguration('model')},
                 {'use_sim_time': LaunchConfiguration('use_sim_time', default="false")}
             ]
         ),

@@ -34,6 +34,18 @@ The former `ltv_tv` model is not part of the model set. Torque vectoring is out
 of scope and none of the models in this document has an external yaw-moment
 input.
 
+### ROS C++ deployment parity
+
+The ROS controller exposes `ltv` and `anfis_direct` through the same six-state,
+one-steering-input interface used by MATLAB. Its condensed prediction includes
+the affine term $W$, and the HPIPM objective contains the state, command, and
+command-increment terms $S^TQ S$, $R$, and $D^TR_dD$. HPIPM enforces limits on
+the steering command, command increment, predicted steering position, and
+predicted steering rate. The direct ANFIS YAML export contains only
+$[v_y,r,v_x,\delta]$, uses the saved training sample time, and applies the same
+input clamping and local-affine extrapolation behaviour as
+`anfis_direct_matrix.m`.
+
 ## Common interface and notation
 
 All one-step model functions use
@@ -84,9 +96,10 @@ $$
 -2\zeta\omega_n\dot\delta,
 $$
 
-where $\omega_n=16\ \mathrm{rad/s}$ and $\zeta=0.5$. Steering angles are
-limited to $\lvert\delta\rvert,\lvert u_\delta\rvert\leq0.45\ \mathrm{rad}$
-in the nonlinear models. Unless stated otherwise, continuous equations are
+where $\omega_n=16\ \mathrm{rad/s}$ and $\zeta=0.5$. In the MPC configuration,
+the steering command satisfies $\lvert u_\delta\rvert\leq0.38\ \mathrm{rad}$
+and the predicted steering position satisfies
+$\lvert\delta\rvert\leq0.45\ \mathrm{rad}$. Unless stated otherwise, continuous equations are
 discretized by forward Euler:
 
 $$

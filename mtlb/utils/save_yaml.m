@@ -1,10 +1,15 @@
-% This script saves the anfis model matrices to yaml file format
+% Export the current torque-vectoring-free direct ANFIS model for ROS C++.
+mtlb_dir = fileparts(fileparts(mfilename('fullpath')));
+ros_package_dir = fileparts(mtlb_dir);
+source = load(fullfile(mtlb_dir,'models','anfis_direct', ...
+    'anfis_direct.mat'),'anfis_direct');
+anfis_direct = source.anfis_direct;
 
-model_path = '../models/anfis_delta';
-model_list = {anfis_delta.r, anfis_delta.vy};
+model_path = fullfile(ros_package_dir,'models','anfis_direct');
+model_list = {anfis_direct.r, anfis_direct.vy};
 model_names = {"r", "vy"};
 
-input_norm = anfis_delta.norm;
+input_norm = anfis_direct.norm;
 
 if ~exist(model_path, 'dir')
     mkdir(model_path);
@@ -16,13 +21,14 @@ norm_file = fullfile(model_path, "normalization.yaml");
 fid = fopen(norm_file, 'w');
 
 fprintf(fid,"normalization:\n");
+fprintf(fid,"  training_ts: %.17g\n", anfis_direct.Ts);
 
 fprintf(fid,"  mu: [");
 for k = 1:length(input_norm.mu)
     if k < length(input_norm.mu)
-        fprintf(fid,"%f, ", input_norm.mu(k));
+        fprintf(fid,"%.17g, ", input_norm.mu(k));
     else
-        fprintf(fid,"%f",  input_norm.mu(k));
+        fprintf(fid,"%.17g",  input_norm.mu(k));
     end
 end
 fprintf(fid,"]\n");
@@ -30,9 +36,9 @@ fprintf(fid,"]\n");
 fprintf(fid,"  sigma: [");
 for k = 1:length(input_norm.sigma)
     if k < length(input_norm.sigma)
-        fprintf(fid,"%f, ", input_norm.sigma(k));
+        fprintf(fid,"%.17g, ", input_norm.sigma(k));
     else
-        fprintf(fid,"%f",  input_norm.sigma(k));
+        fprintf(fid,"%.17g",  input_norm.sigma(k));
     end
 end
 fprintf(fid,"]\n");
@@ -40,9 +46,9 @@ fprintf(fid,"]\n");
 fprintf(fid,"  x_min: [");
 for k = 1:length(input_norm.x_min)
     if k < length(input_norm.x_min)
-        fprintf(fid,"%f, ", input_norm.x_min(k));
+        fprintf(fid,"%.17g, ", input_norm.x_min(k));
     else
-        fprintf(fid,"%f",  input_norm.x_min(k));
+        fprintf(fid,"%.17g",  input_norm.x_min(k));
     end
 end
 fprintf(fid,"]\n");
@@ -50,9 +56,9 @@ fprintf(fid,"]\n");
 fprintf(fid,"  x_max: [");
 for k = 1:length(input_norm.x_max)
     if k < length(input_norm.x_max)
-        fprintf(fid,"%f, ", input_norm.x_max(k));
+        fprintf(fid,"%.17g, ", input_norm.x_max(k));
     else
-        fprintf(fid,"%f",  input_norm.x_max(k));
+        fprintf(fid,"%.17g",  input_norm.x_max(k));
     end
 end
 fprintf(fid,"]\n");
@@ -93,9 +99,9 @@ for m = 1:length(model_list)
 
             for k = 1:length(params)
                 if k < length(params)
-                    fprintf(fid,"%f, ", params(k));   % comma here
+                    fprintf(fid,"%.17g, ", params(k));   % comma here
                 else
-                    fprintf(fid,"%f", params(k));     % last element no comma
+                    fprintf(fid,"%.17g", params(k));     % last element no comma
                 end
             end
 
@@ -118,9 +124,9 @@ for m = 1:length(model_list)
 
         for k = 1:length(params)
             if k < length(params)
-                fprintf(fid,"%f, ", params(k));
+                fprintf(fid,"%.17g, ", params(k));
             else
-                fprintf(fid,"%f", params(k));
+                fprintf(fid,"%.17g", params(k));
             end
         end
 

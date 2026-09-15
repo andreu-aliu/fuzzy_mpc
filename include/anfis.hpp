@@ -3,9 +3,12 @@
 #include <Eigen/Dense>
 #include <yaml-cpp/yaml.h>
 
+#include <algorithm>
 #include <vector>
 #include <string>
 #include <cmath>
+#include <limits>
+#include <iostream>
 #include <stdexcept>
 
 class Anfis
@@ -142,33 +145,36 @@ private:
 
     void computeWeights(const Eigen::VectorXd& input) const
     {
-        double sum_w = 0.0;
+        std::vector<double> log_w(n_r, 0.0);
+        double max_log_w = -std::numeric_limits<double>::infinity();
 
-        for (int i = 0; i < n_r; i++) {
-            double firing = 1.0;
-
-            for (int j = 0; j < n_in; j++) {
+        // Work in the log domain so products of narrow Gaussian membership
+        // functions cannot underflow to zero.
+        for (int i = 0; i < n_r; ++i) {
+            for (int j = 0; j < n_in; ++j) {
                 const auto& params = mf[j][i];
-
                 const double sigma = params(0);
-                const double c     = params(1);
-
-                if (sigma == 0.0) {
-                    throw std::runtime_error("Anfis::computeWeights: sigma is zero");
+                const double center = params(1);
+                if (!std::isfinite(sigma) || sigma <= 0.0) {
+                    throw std::runtime_error(
+                        "Anfis::computeWeights: sigma must be positive");
                 }
-
-                const double dx = input(j) - c;
-                const double mu = std::exp(-(dx * dx) / (2.0 * sigma * sigma));
-
-                firing *= mu;
+                const double normalized_distance =
+                    (input(j) - center) / sigma;
+                log_w[i] += -0.5 * normalized_distance * normalized_distance;
             }
-
-            w[i] = firing;
-            sum_w += firing;
+            max_log_w = std::max(max_log_w, log_w[i]);
         }
 
-        if (sum_w <= 0.0) {
-            throw std::runtime_error("Anfis::computeWeights: sum of firing strengths is zero");
+        double sum_w = 0.0;
+        for (int i = 0; i < n_r; ++i) {
+            w[i] = std::exp(log_w[i] - max_log_w);
+            sum_w += w[i];
+        }
+
+        if (!std::isfinite(sum_w) || sum_w <= 0.0) {
+            throw std::runtime_error(
+                "Anfis::computeWeights: invalid firing-strength sum");
         }
 
         for (int i = 0; i < n_r; i++) {

@@ -1,5 +1,7 @@
 #define EIGEN_DONT_PARALLELIZE
 
+#include <algorithm>
+#include <cmath>
 #include <rclcpp/rclcpp.hpp>
 #include <signal.h>
 
@@ -55,7 +57,7 @@ class Manager : public rclcpp::Node{
         .automatically_declare_parameters_from_overrides(true)){
 
 
-        std::cout << "LTV MPC Node Started" << std::endl;
+        std::cout << "Fuzzy MPC node started" << std::endl;
         Config& cfg = Config::getInstance();
         fill_config(cfg, this);
         std::cout << "Configuration Loaded" << std::endl;
@@ -128,7 +130,7 @@ class Manager : public rclcpp::Node{
             // MPC solution
             if(first_iteration){
                 predicted_states = local_ref;
-                optimal_controls = std::vector<Control>(cfg.mpc.n_horizon, Control{0.0, 0.0});
+                optimal_controls = std::vector<Control>(cfg.mpc.n_horizon, Control{0.0});
                 applied_control = optimal_controls[0];
                 first_iteration = false;
             }
@@ -142,7 +144,11 @@ class Manager : public rclcpp::Node{
             }
 
             // Publish commands
-            applied_control = optimal_controls[2];  // TODO: Use parameter
+            const size_t latency_steps = static_cast<size_t>(std::clamp(
+                std::llround(cfg.mpc.latency / cfg.mpc.Ts),
+                0LL,
+                static_cast<long long>(optimal_controls.size() - 1)));
+            applied_control = optimal_controls[latency_steps];
             double steering = applied_control.steering;
             pubSteering->publish(steerMsg(steering));
 
@@ -193,7 +199,7 @@ class Manager : public rclcpp::Node{
         global_trajectory = planMsg(msg);
 
         if(global_trajectory.size() < 2){
-            RCLCPP_ERROR(get_logger(), "LTV MPC: Too short, Planner");
+            RCLCPP_ERROR(get_logger(), "MPC: Planner trajectory is too short");
             return;
         }
 
@@ -214,7 +220,7 @@ class Manager : public rclcpp::Node{
 
     bool is_valid(const std::vector<Control> &controls){
         for(const auto& c : controls){
-            if(!std::isfinite(c.steering) || !std::isfinite(c.mz)){
+            if(!std::isfinite(c.steering)){
                 return false;
             }
         }

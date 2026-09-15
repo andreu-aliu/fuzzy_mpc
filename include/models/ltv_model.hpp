@@ -2,6 +2,8 @@
 
 #include "utils/Config.hpp"
 #include <as_lib/utils/Profiler.hpp>
+#include <unsupported/Eigen/MatrixFunctions>
+#include <stdexcept>
 #include "model.hpp"
 
 class LtvModel : public Model
@@ -25,20 +27,12 @@ public:
     {
         Config& cfg = Config::getInstance();
 
-        // Resize matreix for safety
-        Ad.resize(6, 6);
-        Bd.resize(6, 2);
-        Cd.resize(6);
+        if (x.size() != 6 || u.size() != 1) {
+            throw std::invalid_argument("LtvModel expects 6 states and 1 input.");
+        }
 
-        // States
-        const double y         = x(0);
         const double vy        = x(1);
         const double psi       = x(2);
-        const double r         = x(3);
-        const double delta     = x(4);
-        const double delta_dot = x(5);
-
-        const double steering_cmd = u(0);
 
         // Car parameters
         const double m_  = cfg.car.m;
@@ -56,35 +50,45 @@ public:
         const double damp_  = cfg.car.steering_damp;
         const double omega_ = cfg.car.steering_omega;
 
-        const double Cf_ = Df * Cf * Bf;
-        const double Cr_ = Dr * Cr * Br;
+        // The configuration stores single-tyre Magic Formula factors. The
+        // bicycle model uses positive axle cornering stiffnesses.
+        const double Cf_ = 2.0 * std::abs(Df * Cf * Bf);
+        const double Cr_ = 2.0 * std::abs(Dr * Cr * Br);
 
         const double Ts_ = cfg.mpc.Ts;
-        const double vx_safe = std::max(vx, 1.0);
+        const double vx_dynamic = std::max(vx, 3.0);
 
-        // Continuous A matrix
-        Eigen::Matrix<double,6,6> A;
-
-        A << 0, cos(psi), vx*cos(psi), 0, 0, 0,
-            0, (Cf_ * cos(delta) + Cr_) / (m_ * vx_safe), 0, ((lf_ * Cf_ * cos(delta) - lr_ * Cr_) / (m_ * vx_safe)) - vx, -Cf_ * cos(delta) / m_, 0,
+        Eigen::Matrix<double, 6, 6> A;
+        A << 0, std::cos(psi), vx * std::cos(psi) - vy * std::sin(psi), 0, 0, 0,
+            0, -(Cf_ + Cr_) / (m_ * vx_dynamic), 0,
+            (Cr_ * lr_ - Cf_ * lf_) / (m_ * vx_dynamic) - vx_dynamic,
+            Cf_ / m_, 0,
             0, 0, 0, 1, 0, 0,
-            0, (lf_ * Cf_ * cos(delta) - lr_ * Cr_) / (Iz_ * vx_safe), 0, (lf_ * lf_ * Cf_ * cos(delta) + lr_ * lr_ * Cr_) / (Iz_ * vx_safe), -lf_ * Cf_ * cos(delta) / Iz_, 0, 
+            0, (Cr_ * lr_ - Cf_ * lf_) / (Iz_ * vx_dynamic), 0,
+            -(Cf_ * lf_ * lf_ + Cr_ * lr_ * lr_) / (Iz_ * vx_dynamic),
+            Cf_ * lf_ / Iz_, 0,
             0, 0, 0, 0, 0, 1,
             0, 0, 0, 0, - omega_ * omega_, - 2.0 * damp_ * omega_;
 
-        // Continuous B matrix
-        Eigen::Matrix<double,6,2> B;
+        Eigen::Matrix<double, 6, 1> B;
         B.setZero();
         B(5, 0) = omega_ * omega_;
 
-        // Discretization (Euler)
-        Eigen::Matrix<double,6,6> I = Eigen::Matrix<double,6,6>::Identity();
+        Eigen::Matrix<double, 6, 1> C = Eigen::Matrix<double, 6, 1>::Zero();
+        C(0) = vx * std::sin(psi) + vy * std::cos(psi)
+             - A(0, 1) * vy - A(0, 2) * psi;
 
-        Ad = I + A * Ts_;
-        Bd = B * Ts_;
-
-        // No affine term
-        Cd = Eigen::VectorXd::Zero(6);
+        // Exact discretization of the local affine model, matching MATLAB.
+        Eigen::Matrix<double, 8, 8> augmented =
+            Eigen::Matrix<double, 8, 8>::Zero();
+        augmented.block<6, 6>(0, 0) = A;
+        augmented.block<6, 1>(0, 6) = B;
+        augmented.block<6, 1>(0, 7) = C;
+        const Eigen::Matrix<double, 8, 8> discrete =
+            (augmented * Ts_).exp();
+        Ad = discrete.block<6, 6>(0, 0);
+        Bd = discrete.block<6, 1>(0, 6);
+        Cd = discrete.block<6, 1>(0, 7);
     }
 
 };

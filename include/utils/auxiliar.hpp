@@ -22,7 +22,6 @@ struct State{
 
 struct Control{
     double steering;
-    double mz;
 };
 
 struct TrajectoryPoint{

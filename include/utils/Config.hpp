@@ -18,11 +18,12 @@ struct Config{
         int n_horizon;      // prediction horizon
         int n_evaluation;   // Evaluation horizon
         double latency;     // actuation latency [s]
+        std::string model;  // ltv or anfis_direct
 
         // Limits
         double max_steering;
+        double max_delta;
         double max_steering_dot;
-        double max_mz;
 
         // scalings
         double scale_y;
@@ -31,8 +32,6 @@ struct Config{
         double scale_r;
         double scale_st;
         double scale_dst;
-        double scale_mz;
-        double scale_dmz;
         
         // state weights
         double q_lat;
@@ -50,10 +49,8 @@ struct Config{
         double p_delta_dot;
         // control weights
         double r_st;
-        double r_mz;
         // Change in control weights
         double rd_st;
-        double rd_mz;
 
     }mpc;
 

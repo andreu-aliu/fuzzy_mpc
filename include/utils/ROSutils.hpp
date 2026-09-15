@@ -32,10 +32,11 @@ inline void fill_config(Config& cfg, rclcpp::Node* node)
     node->get_parameter("MPC.n_evaluation",     cfg.mpc.n_evaluation);
     node->get_parameter("MPC.Ts",               cfg.mpc.Ts);
     node->get_parameter("MPC.latency",          cfg.mpc.latency);
+    node->get_parameter("MPC.model",            cfg.mpc.model);
 
     node->get_parameter("MPC.max_steering",     cfg.mpc.max_steering);
+    node->get_parameter("MPC.max_delta",        cfg.mpc.max_delta);
     node->get_parameter("MPC.max_steering_dot", cfg.mpc.max_steering_dot);
-    node->get_parameter("MPC.max_mz",           cfg.mpc.max_mz);
 
     node->get_parameter("MPC.scale_y",       cfg.mpc.scale_y);
     node->get_parameter("MPC.scale_vy",      cfg.mpc.scale_vy);
@@ -43,8 +44,6 @@ inline void fill_config(Config& cfg, rclcpp::Node* node)
     node->get_parameter("MPC.scale_r",       cfg.mpc.scale_r);
     node->get_parameter("MPC.scale_st",      cfg.mpc.scale_st);
     node->get_parameter("MPC.scale_dst",     cfg.mpc.scale_dst);
-    node->get_parameter("MPC.scale_mz",      cfg.mpc.scale_mz);
-    node->get_parameter("MPC.scale_dmz",     cfg.mpc.scale_dmz);
 
     node->get_parameter("MPC.q_lat",      cfg.mpc.q_lat);
     node->get_parameter("MPC.q_vy",       cfg.mpc.q_vy);
@@ -61,10 +60,8 @@ inline void fill_config(Config& cfg, rclcpp::Node* node)
     node->get_parameter("MPC.p_delta_dot",cfg.mpc.p_delta_dot);
 
     node->get_parameter("MPC.r_st",       cfg.mpc.r_st);
-    node->get_parameter("MPC.r_mz",       cfg.mpc.r_mz);
 
-    node->get_parameter("MPC.r_dst",      cfg.mpc.rd_st);
-    node->get_parameter("MPC.r_dmz",      cfg.mpc.rd_mz);
+    node->get_parameter("MPC.rd_st",      cfg.mpc.rd_st);
 
     // Car parameters
     node->get_parameter("Car.m",  cfg.car.m);

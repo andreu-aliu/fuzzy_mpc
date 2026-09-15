@@ -11,11 +11,12 @@ as/c:
         Ts: 0.02          # [s] Sampling time (must be trained Ts for ANFIS model)
         n_horizon: 60     # Number of steps in the horizon
         n_evaluation: 60  # Number of steps to evaluate model error on
+        model: "ltv"      # ltv or anfis_direct
 
         # Limits
-        max_steering: 0.436       # [rad] Maximum steering angle
+        max_steering: 0.38        # [rad] Maximum steering command
+        max_delta: 0.45           # [rad] Maximum measured steering position
         max_steering_dot: 1.396   # [rad/s] Maximum steering rate
-        max_mz: 10.0              # [Nm] Maximum moment around the vertical axis
 
         # Scalings to normalize weights and state evaluation
         scale_y: 0.1      # [m]
@@ -24,12 +25,10 @@ as/c:
         scale_r: 0.05     # [rad/s]
         scale_st: 0.2     # [rad]
         scale_dst: 0.001  # [rad/Ts]
-        scale_mz: 1000.0  # [Nm]
-        scale_dmz: 0.005 # [Nm/Ts]
 
       Car:
-        m: 215.0      # Car's mass
-        I: 188.0      # Inertial moment (180) (128)
+        m: 207.0      # Car mass used by the MATLAB LTV model
+        I: 129.024    # Yaw inertia used by the MATLAB LTV model
         Lf: 0.765     # Distance from CoG to front axis (0.708) 
         Lr: 0.765     # Distance from CoG to rear axis (0.822) 
         Bf: 10.5507   # 10.8529

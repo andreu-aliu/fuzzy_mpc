@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 
 def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_mpc/debug/csv",
-                        n_inputs=2, n_states=6, n_horizon=60, row=-1, state_names=None, input_names=None,
+                        n_inputs=1, n_states=6, n_horizon=60, row=-1, state_names=None, input_names=None,
                         show_prev=True):
     """
     Visualize MPC debug data from CSV files.
@@ -21,7 +21,7 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
         n_horizon: Prediction horizon
         row: Row index to plot (default: -1 for last row)
         state_names: Optional list of state names for display (e.g. ["y", "vy", ...])
-        input_names: Optional list of input names for display (e.g. ["steering", "mz"])
+        input_names: Optional list of input names for display
         show_prev: If True and files exist, overlay x_prev/u_prev (linearization points)
     """
     folder = Path(debug_folder)
@@ -36,7 +36,7 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
         state_names = state_names[:n_states]
 
     if input_names is None:
-        input_names = ["steering", "mz"]
+        input_names = ["steering"]
     input_names = list(input_names)
     if len(input_names) < n_inputs:
         input_names.extend(f"input_{i}" for i in range(len(input_names), n_inputs))
@@ -311,4 +311,4 @@ def visualize_mpc_debug(debug_folder="/home/andreu/ros_ws/src/as/control/fuzzy_m
     plt.show()
 
 if __name__ == "__main__":
-    visualize_mpc_debug(n_inputs=2, n_states=6, n_horizon=60)
+    visualize_mpc_debug(n_inputs=1, n_states=6, n_horizon=60)

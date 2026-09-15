@@ -17,10 +17,11 @@ class AnfisModel : public Model
     std::unique_ptr<Anfis> vy_model;
     std::unique_ptr<Anfis> r_model;
 
-    Eigen::Matrix<double, 5, 1> input_min;
-    Eigen::Matrix<double, 5, 1> input_max;
-    Eigen::Matrix<double, 5, 1> input_mean;
-    Eigen::Matrix<double, 5, 1> input_std;
+    Eigen::Matrix<double, 4, 1> input_min;
+    Eigen::Matrix<double, 4, 1> input_max;
+    Eigen::Matrix<double, 4, 1> input_mean;
+    Eigen::Matrix<double, 4, 1> input_std;
+    double training_ts = 0.02;
 
 public:
     AnfisModel() = default;
@@ -54,12 +55,31 @@ public:
             throw std::runtime_error("Missing normalization parameters in " + norm_path);
         }
 
-        for (size_t i = 0; i < 5; ++i)
+        if (mu.size() != 4 || sigma.size() != 4 ||
+            x_min.size() != 4 || x_max.size() != 4)
+        {
+            throw std::runtime_error(
+                "ANFIS normalization must contain [vy, r, vx, delta].");
+        }
+
+        for (size_t i = 0; i < 4; ++i)
         {
             input_mean(i) = mu[i].as<double>();
             input_std(i)  = sigma[i].as<double>();
             input_min(i)  = x_min[i].as<double>();
             input_max(i)  = x_max[i].as<double>();
+            if (!std::isfinite(input_mean(i)) ||
+                !std::isfinite(input_std(i)) || input_std(i) <= 1e-8 ||
+                !std::isfinite(input_min(i)) || !std::isfinite(input_max(i)))
+            {
+                throw std::runtime_error("Invalid ANFIS normalization values.");
+            }
+        }
+        if (norm_node["training_ts"]) {
+            training_ts = norm_node["training_ts"].as<double>();
+        }
+        if (!std::isfinite(training_ts) || training_ts <= 0.0) {
+            throw std::runtime_error("Invalid ANFIS training_ts.");
         }
     }
 
@@ -80,31 +100,30 @@ public:
         const Config& cfg = Config::getInstance();
         const double dt = cfg.mpc.Ts;
 
-        // Resize
+        if (x.size() != 6 || u.size() != 1) {
+            throw std::invalid_argument("AnfisModel expects 6 states and 1 input.");
+        }
+
         Ad = Eigen::MatrixXd::Zero(6, 6);
-        Bd = Eigen::MatrixXd::Zero(6, 2);
+        Bd = Eigen::MatrixXd::Zero(6, 1);
         Cd = Eigen::VectorXd::Zero(6);
 
         // States
-        const double y         = x(0);
         const double vy        = x(1);
         const double psi       = x(2);
         const double r         = x(3);
         const double delta     = x(4);
-        const double delta_dot = x(5);
+        const double step_scale = dt / training_ts;
 
-        const double steering_cmd = u(0);
-        const double mz_cmd       = 0.0; // TODO: u(1);
-
-        // ANFIS input
-        Eigen::Vector<double, 5> anfis_input;
-        anfis_input << vy, r, vx, delta, mz_cmd;
+        Eigen::Vector4d anfis_input;
+        anfis_input << vy, r, vx, delta;
+        const Eigen::Vector4d raw_input = anfis_input;
 
         // Detect extrapolation of trained inputs
         bool extrapolated = false;
-        std::array<const char*, 5> labels = {"vy", "r", "vx", "st", "mz"};
+        std::array<const char*, 4> labels = {"vy", "r", "vx", "delta"};
 
-        for (int i = 0; i < 5; ++i)
+        for (int i = 0; i < 4; ++i)
         {
             if (anfis_input(i) < input_min(i) || anfis_input(i) > input_max(i))
             {
@@ -116,7 +135,7 @@ public:
         {
             std::cerr << "\n===== ANFIS EXTRAPOLATION DETECTED =====\n";
 
-            for (int i = 0; i < 5; ++i)
+            for (int i = 0; i < 4; ++i)
             {
                 const bool out = anfis_input(i) < input_min(i) || anfis_input(i) > input_max(i);
 
@@ -136,7 +155,11 @@ public:
 
         // Clamp and normalize input
         anfis_input = anfis_input.cwiseMax(input_min).cwiseMin(input_max);
-        Eigen::VectorXd anfis_input_n = (anfis_input - input_mean).cwiseQuotient(input_std);
+        const Eigen::Vector4d active =
+            ((raw_input.array() >= input_min.array()).cast<double>() *
+             (raw_input.array() <= input_max.array()).cast<double>()).matrix();
+        Eigen::VectorXd anfis_input_n =
+            (anfis_input - input_mean).cwiseQuotient(input_std);
 
         if(cfg.verbose){
             std::cout << "ANFIS input (normalized): " << anfis_input_n.transpose() << std::endl;
@@ -169,17 +192,22 @@ public:
 
         vy_model->getLinearModel(anfis_input_n, A_vy_n, b_vy_n);
 
-        Eigen::Matrix<double, 1, 5> A_vy = A_vy_n.cwiseQuotient(input_std.transpose());
+        const Eigen::RowVector4d A_vy =
+            A_vy_n.cwiseQuotient(input_std.transpose());
 
         const double b_vy = b_vy_n - A_vy_n.cwiseProduct(input_mean.cwiseQuotient(input_std).transpose()).sum();
+        const Eigen::Vector4d A_vy_effective =
+            A_vy.transpose().cwiseProduct(active);
+        const double vy_at_operating_point =
+            b_vy + A_vy.dot(anfis_input);
 
-        Ad(1, 1) = A_vy(0) + 1.0;
-        Ad(1, 3) = A_vy(1);
-        Ad(1, 4) = A_vy(3);
-
-        Bd(1, 1) = A_vy(4);
-
-        Cd(1) = b_vy + A_vy(2) * vx;
+        Ad(1, 1) = 1.0 - step_scale + step_scale * A_vy_effective(0);
+        Ad(1, 3) = step_scale * A_vy_effective(1);
+        Ad(1, 4) = step_scale * A_vy_effective(3);
+        Cd(1) = step_scale * (vy_at_operating_point
+            - A_vy_effective(0) * vy
+            - A_vy_effective(1) * r
+            - A_vy_effective(3) * delta);
 
         // =========================
         // ANFIS r dynamics
@@ -189,23 +217,27 @@ public:
 
         r_model->getLinearModel(anfis_input_n, A_r_n, b_r_n);
 
-        Eigen::Matrix<double, 1, 5> A_r = A_r_n.cwiseQuotient(input_std.transpose());
+        const Eigen::RowVector4d A_r =
+            A_r_n.cwiseQuotient(input_std.transpose());
 
         const double b_r = b_r_n - A_r_n.cwiseProduct(input_mean.cwiseQuotient(input_std).transpose()).sum();
+        const Eigen::Vector4d A_r_effective =
+            A_r.transpose().cwiseProduct(active);
+        const double r_at_operating_point = b_r + A_r.dot(anfis_input);
 
-        Ad(3, 1) = A_r(0);
-        Ad(3, 3) = A_r(1) + 1.0;
-        Ad(3, 4) = A_r(3);
-
-        Bd(3, 1) = A_r(4);
-
-        Cd(3) = b_r + A_r(2) * vx;
+        Ad(3, 1) = step_scale * A_r_effective(0);
+        Ad(3, 3) = 1.0 - step_scale + step_scale * A_r_effective(1);
+        Ad(3, 4) = step_scale * A_r_effective(3);
+        Cd(3) = step_scale * (r_at_operating_point
+            - A_r_effective(0) * vy
+            - A_r_effective(1) * r
+            - A_r_effective(3) * delta);
 
         // =========================
         // Steering dynamics (2nd order)
         // =========================
-        const double damp_  = 0.5;
-        const double omega_ = 16.0;
+        const double damp_  = cfg.car.steering_damp;
+        const double omega_ = cfg.car.steering_omega;
 
         // delta_dot = x6
         Ad(4,4) = 1.0;

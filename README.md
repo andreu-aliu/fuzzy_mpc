@@ -27,7 +27,7 @@ This project explores a middle ground: keep the predictive-control structure, ha
 - **Two model implementations**: physics-based LTV and learned ANFIS dynamics
 - **Fast dense QP solving** with [HPIPM](https://github.com/giaf/hpipm) and [BLASFEO](https://github.com/giaf/blasfeo)
 - **Warm-started predictions** using the previous state and control sequence
-- **Steering angle, steering-rate, and yaw-moment constraints**
+- **Steering-command, steering-angle, and steering-rate constraints**
 - **Online model-error evaluation** over a configurable rolling horizon
 - **ROS 2 visualisation outputs** for the reference and predicted paths
 - **Event-oriented configuration** for acceleration, skidpad, autocross, and trackdrive
@@ -49,7 +49,7 @@ The controller remains under active development and validation within the team's
 
 This repository is one component of BCN eMotorsport's autonomous-system pipeline. It depends on the team's state estimation, planning, message, and shared-library packages, and is not intended to operate as a standalone ROS 2 application.
 
-The controller predicts six states — lateral position, lateral velocity, heading, yaw rate, steering angle, and steering rate — and optimises steering plus an optional yaw moment over the horizon. The LTV model is currently selected in `MPC::initialize()`; the ANFIS backend and trained YAML models are included for ongoing integration.
+The controller predicts six states — lateral position, lateral velocity, heading, yaw rate, steering angle, and steering rate — and optimises only the steering command over the horizon. Torque vectoring is outside the scope of this implementation. Select either the LTV or direct-next-state ANFIS backend with `MPC.model`.
 
 ## ROS interface
 
@@ -80,13 +80,19 @@ The most important parameters to review are:
 | `MPC.Ts` | Controller sampling period |
 | `MPC.n_horizon` | Prediction horizon in samples |
 | `MPC.n_evaluation` | Window used for model-error evaluation |
-| `MPC.max_steering` | Steering-angle constraint |
+| `MPC.model` | Prediction backend: `ltv` or `anfis_direct` |
+| `MPC.max_steering` | Steering-command constraint |
+| `MPC.max_delta` | Predicted measured-steering-position constraint |
 | `MPC.max_steering_dot` | Steering-rate constraint |
 | `MPC.q_*`, `MPC.p_*` | Stage and terminal state weights |
 | `MPC.r_*`, `MPC.rd_*` | Control and control-rate weights |
 | `Car.*` | Vehicle and tyre-model parameters |
 
-The ANFIS model definitions and normalisation statistics live under [`models/`](models/). Keep `MPC.Ts` consistent with the sampling time used to train those models.
+The ANFIS model definitions and normalisation statistics live under [`models/anfis_direct/`](models/anfis_direct/). They are exported from the trained MATLAB `anfis_direct.mat` model by `mtlb/utils/save_yaml.m`; the export records the training sample time and contains the four inputs `[vy, r, vx, delta]`.
+
+Choose the deployed model at launch time, for example with
+`ros2 launch fuzzy_mpc trackdrive.launch.py model:=ltv` or
+`model:=anfis_direct`.
 
 ## Repository map
 

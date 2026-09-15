@@ -128,4 +128,35 @@ install(
 # Ament exports
 # ------------------------------------------------------------------------------
 ament_export_include_directories(include)
+
+if(BUILD_TESTING)
+  enable_testing()
+  add_executable(mpc_smoke_test test/mpc_smoke_test.cpp)
+  target_compile_definitions(mpc_smoke_test PRIVATE
+    FUZZY_MPC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  target_include_directories(mpc_smoke_test PRIVATE
+    include
+    ${BLASFEO_DIR}/include
+    ${HPIPM_DIR}/include
+  )
+  target_link_libraries(mpc_smoke_test
+    as_lib::as_lib
+    yaml-cpp
+    ${HPIPM_LIBRARIES}
+    ${BLASFEO_LIBRARIES}
+    OpenMP::OpenMP_CXX
+  )
+  ament_target_dependencies(mpc_smoke_test
+    rclcpp
+    std_msgs
+    visualization_msgs
+    nav_msgs
+    cat_msgs
+    tf2
+    ament_index_cpp
+  )
+  add_test(NAME mpc_ltv_smoke COMMAND mpc_smoke_test ltv)
+  add_test(NAME mpc_anfis_direct_smoke COMMAND mpc_smoke_test anfis_direct)
+endif()
+
 ament_package()

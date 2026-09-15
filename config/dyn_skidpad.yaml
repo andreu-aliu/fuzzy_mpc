@@ -20,7 +20,5 @@ as/c:
         p_delta_dot: 0.0
 
         r_st: 1.0
-        r_mz: 0.0
 
         rd_st: 2.0
-        rd_mz: 0.0

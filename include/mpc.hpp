@@ -8,12 +8,14 @@
 #include <chrono>
 #include <algorithm> 
 #include <filesystem>
+#include <stdexcept>
 
 #include <eigen3/Eigen/Dense>
 #include <unsupported/Eigen/MatrixFunctions>
  
 #include "utils/solver.hpp"
 #include "utils/Config.hpp"
+#include "utils/auxiliar.hpp"
 #include "utils/kdtree.hpp"
 #include <as_lib/utils/Profiler.hpp>
 
@@ -39,9 +41,8 @@ class MPC {
 
     // Constants
     const size_t n_states = 6;
-    const size_t n_controls = 2;
+    const size_t n_controls = 1;
     size_t n_horizon;
-    const float Ts = 0.025;
 
     // Weight matrices
     Eigen::VectorXd q_diag;
@@ -111,7 +112,6 @@ class MPC {
         // Create matrix R_
         R.setZero();
         R(0, 0) = cfg.mpc.r_st / pow(cfg.mpc.scale_st, 2);
-        R(1, 1) = cfg.mpc.r_mz / pow(cfg.mpc.scale_mz, 2);
         R_.setZero(); 
         for (size_t i = 0; i < n_horizon; ++i)
             R_.block(i * n_controls, i * n_controls, n_controls, n_controls) = R;
@@ -119,7 +119,6 @@ class MPC {
         // Create matrix Rd_
         Rd.setZero();
         Rd(0, 0) = cfg.mpc.rd_st / pow(cfg.mpc.scale_dst, 2);
-        Rd(1, 1) = cfg.mpc.rd_mz / pow(cfg.mpc.scale_dmz, 2);
         Rd_.setZero();
         for (size_t i = 0; i < n_horizon; ++i)
             Rd_.block(i * n_controls, i * n_controls, n_controls, n_controls) = Rd;
@@ -183,6 +182,11 @@ class MPC {
     {
         PROFC_NODE_
 
+        if (prev_states.empty() || prev_controls.empty()) {
+            throw std::invalid_argument(
+                "MPC requires non-empty shifted state and control sequences.");
+        }
+
         // x0 vector
         x0 << car_state.y,          // y
               car_state.vy,         // vy
@@ -195,27 +199,22 @@ class MPC {
         for (size_t i = 0; i < n_horizon; ++i){
 
             // x_prev vector
-            if (i < prev_states.size()-1){
-                x_prev.segment(i * n_states, n_states) << prev_states[i+1].y,         // y
-                                                          prev_states[i+1].vy,        // vy
-                                                          prev_states[i+1].psi,       // psi
-                                                          prev_states[i+1].r,         // r
-                                                          prev_states[i+1].delta,     // delta
-                                                          prev_states[i+1].delta_dot; // delta dot
-            }else{
-                x_prev.segment(i * n_states, n_states) = x_prev.segment((i - 1) * n_states, n_states);
-            }
+            const size_t state_idx = std::min(i + 1, prev_states.size() - 1);
+            x_prev.segment(i * n_states, n_states) << prev_states[state_idx].y,
+                                                      prev_states[state_idx].vy,
+                                                      prev_states[state_idx].psi,
+                                                      prev_states[state_idx].r,
+                                                      prev_states[state_idx].delta,
+                                                      prev_states[state_idx].delta_dot;
 
             // u_prev vector
-            if (i < prev_controls.size()-1){
-                u_prev(i * n_controls) = prev_controls[i+1].steering;   // steering
-                u_prev(i * n_controls +1) = prev_controls[i+1].mz;      // mz
-            }else{
-                u_prev.segment(i * n_controls, n_controls) = u_prev.segment((i - 1) * n_controls, n_controls);
-            }
+            const size_t control_idx = std::min(i + 1, prev_controls.size() - 1);
+            u_prev(i) = prev_controls[control_idx].steering;
 
             // Discrete model matrices Ad Bd Cd
-            auto prev_state = x_prev.segment(i * n_states, n_states);
+            Eigen::VectorXd prev_state = (i == 0)
+                ? x0
+                : x_prev.segment((i - 1) * n_states, n_states).eval();
             auto prev_u = u_prev.segment(i * n_controls, n_controls);
 
             model->getDiscreteMatrices(prev_state, prev_u, vx[i], Ad[i], Bd[i], Cd[i]);
@@ -249,7 +248,7 @@ class MPC {
         {PROFC_NODE("createModelMatrices_S")
         for (int j = 0; j < n_horizon; ++j)
         {
-            Eigen::Matrix<double, 6, 2> AB = Bd[j];
+            Eigen::MatrixXd AB = Bd[j];
 
             for (int i = j; i < n_horizon; ++i)
             {
@@ -303,24 +302,26 @@ class MPC {
 
         d.setZero();
         d(0) = -u_prev_iter.steering;
-        d(1) = -u_prev_iter.mz;
-        
-        H = 2.0 * (S.transpose() * Q * S + R_);
 
-        g.noalias() = (2 * (x0.transpose() * T.transpose() - x_ref.transpose()) * Q * S).transpose();
+        H = 2.0 * (S.transpose() * Q * S + R_ + D.transpose() * Rd_ * D);
+        H = 0.5 * (H + H.transpose());
+        H.diagonal().array() += 1e-8;
+
+        g.noalias() = 2.0 * S.transpose() * Q * (T * x0 + W - x_ref)
+                    + 2.0 * D.transpose() * Rd_ * d;
 
         // Solution without constraints
             // u_opt = H.ldlt().solve(-g); // Cholesk variant (for positive and negative defined matrices)
             // u_opt = H.llt().solve(-g); // Cholesky decomposition (need to find if H is positive define)
 
         // Solution with constraints using HPIPM solver
-            solver.solve(H, g, S, T, x0);
-            u_opt = solver.getSolution();
+            const bool solved = solver.solve(
+                H, g, S, T, W, D, x0, u_prev_iter.steering);
+            u_opt = solved ? solver.getSolution() : u_prev;
 
         Controls optimal_controls(n_horizon);
         for (size_t i = 0; i < n_horizon; ++i){
             optimal_controls[i].steering = u_opt(i * n_controls);
-            optimal_controls[i].mz = u_opt(i * n_controls + 1);
         }
 
         if(cfg.verbose){
@@ -342,10 +343,9 @@ class MPC {
         u_vec.setZero();
         for (size_t i = 0; i < cfg.mpc.n_horizon; ++i){
             u_vec(i * n_controls) = controls[i].steering;
-            u_vec(i * n_controls + 1) = controls[i].mz;
         }
 
-        x_pred.noalias() = S * u_vec + T * x0; // + W;
+        x_pred.noalias() = S * u_vec + T * x0 + W;
 
         for (size_t i = 0; i < n_horizon; ++i){
             predicted_states[i].y = x_pred(i * n_states);
@@ -355,14 +355,14 @@ class MPC {
             predicted_states[i].delta = x_pred(i * n_states + 4);
             predicted_states[i].delta_dot = x_pred(i * n_states + 5);
 
-            predicted_states[i].vx = vx[i+1]; // vx is not predicted by the model
+            predicted_states[i].vx = vx[i]; // vx is not predicted by the model
 
             if(i == 0){
                 predicted_states[i].x = x_0.x;
             }else{
                 predicted_states[i].x = predicted_states[i-1].x
                                         + (predicted_states[i].vx * cos(predicted_states[i].psi)
-                                        + predicted_states[i].vy * sin(predicted_states[i].psi)) * cfg.mpc.Ts;
+                                        - predicted_states[i].vy * sin(predicted_states[i].psi)) * cfg.mpc.Ts;
             }
         }
 
@@ -574,8 +574,26 @@ class MPC {
     {    
         std::cout << "Initializing MPC..." << std::endl;
 
+        if (cfg.mpc.n_horizon <= 0 || !std::isfinite(cfg.mpc.Ts) ||
+            cfg.mpc.Ts <= 0.0 || !std::isfinite(cfg.mpc.latency) ||
+            cfg.mpc.latency < 0.0 || cfg.mpc.max_steering <= 0.0 ||
+            cfg.mpc.max_delta <= 0.0 || cfg.mpc.max_steering_dot <= 0.0 ||
+            cfg.mpc.scale_y <= 0.0 || cfg.mpc.scale_vy <= 0.0 ||
+            cfg.mpc.scale_psi <= 0.0 || cfg.mpc.scale_r <= 0.0 ||
+            cfg.mpc.scale_st <= 0.0 || cfg.mpc.scale_dst <= 0.0) {
+            throw std::invalid_argument("Invalid MPC horizon, timing, limit, or scaling parameter.");
+        }
+
         // Model
-        model = std::make_unique<LtvModel>(); // LtvModel AnfisModel
+        if (cfg.mpc.model == "ltv") {
+            model = std::make_unique<LtvModel>();
+        } else if (cfg.mpc.model == "anfis_direct") {
+            model = std::make_unique<AnfisModel>();
+        } else {
+            throw std::runtime_error(
+                "Unsupported MPC.model '" + cfg.mpc.model +
+                "'. Expected 'ltv' or 'anfis_direct'.");
+        }
         model->initialize();
 
         // Save recurrent parameters
@@ -633,8 +651,10 @@ class MPC {
 
         firstIteration = true;
 
-        solver.setParams(cfg.mpc.max_steering, cfg.mpc.max_steering_dot, cfg.mpc.max_mz, n_states, n_horizon, n_controls, cfg.verbose);
-        std::cout << "MPC initialized" << std::endl;
+        solver.setParams(cfg.mpc.max_steering, cfg.mpc.max_delta,
+            cfg.mpc.max_steering_dot, cfg.mpc.Ts, n_states, n_horizon,
+            n_controls, cfg.verbose);
+        std::cout << "MPC initialized with model " << cfg.mpc.model << std::endl;
     }
 
     ~MPC() = default;
