@@ -610,6 +610,16 @@ $$
 r(k+1)=r^{\mathrm{LTV}}(k+1)+s_T\hat e_r(z_k).
 $$
 
+The deployed correction is additionally scaled by a training-selected gain
+$\gamma$:
+
+$$
+x_{k+1}=f_{\mathrm{LTV}}(x_k,u_k)+\gamma\hat e(x_k,u_k).
+$$
+
+The current artifact selected $\gamma=0.2$. A gain of zero is always included
+as the plain-LTV fallback.
+
 `anfis_residuals.m` evaluates the fuzzy residuals directly and adds them to a
 direct call of the LTV predictor. `anfis_residuals_2.m` calls
 `anfis_residuals_matrix.m`, which adds the frozen-rule affine residual
@@ -620,10 +630,26 @@ This formulation retains the known small-slip structure and asks ANFIS to
 learn only its systematic one-step error. Its runtime scaling assumes that a
 one-step residual scales linearly with the interval, which is an approximation.
 
-Its trainer uses the same independent real training/evaluation run split and
-balanced preprocessing as the other ANFIS models. Residual targets are always
-generated with the current steering-only `ltv` implementation, so changing the
-LTV equations requires retraining this model.
+The trainer partitions `datasets_training.mat` into deterministic, disjoint
+fit and checking sets made of complete runs, stratified by event and track
+layout where at least two runs are available. `datasets_evaluation.mat` is not
+loaded and therefore cannot influence membership training, epoch selection,
+gain selection, or stability acceptance.
+
+After one-step ANFIS training, candidate gains
+`[0, 0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1]` are evaluated on measured-steering
+60-step rolling windows from the internal checking runs. A nonzero gain is
+eligible only when it improves both equal-run $v_y$ and $r$ RMSE relative to
+$\gamma=0$ and the maximum inspected local lateral-state spectral radius is at
+most one. Among eligible gains, the trainer minimizes the worse of the two
+RMSE ratios. If no gain passes, it stores $\gamma=0$.
+
+For the current artifact, $\gamma=0.2$ reduced internal-checking equal-run
+60-step RMSE from `0.4382` to `0.4246 m/s` in $v_y$ and from `0.07824` to
+`0.07599 rad/s` in $r$; its maximum inspected local radius was `0.8457`.
+Gains `0.75` and `1.0` were rejected as locally unstable. Residual targets are
+always generated with the current steering-only `ltv` implementation, so
+changing the LTV equations requires retraining and recalibrating this model.
 
 ## Evolving ellipsoidal TS model (`EEFIGLearning`, `TSGranule`)
 

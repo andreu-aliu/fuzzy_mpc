@@ -35,7 +35,12 @@ mask_low=[X_pred(2) X_pred(4) vx X_pred(5)]<xmin;
 mask_high=[X_pred(2) X_pred(4) vx X_pred(5)]>xmax;
 active=~(mask_low|mask_high);
 if isfield(anfis_residuals,'Ts'),training_dt=anfis_residuals.Ts;else,training_dt=0.02;end
-step_scale=dt/training_dt;
+if isfield(anfis_residuals,'residual_gain')
+    residual_gain = anfis_residuals.residual_gain;
+else
+    residual_gain = 1.0;
+end
+step_scale=residual_gain*dt/training_dt;
 
 % e_vy residual
 [A_vy_n, b_vy_n, ~] = evalfis_mat(anfis_residuals.vy.mat, Xin_n);

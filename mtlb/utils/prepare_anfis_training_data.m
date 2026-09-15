@@ -1,8 +1,17 @@
 function prepared = prepare_anfis_training_data(training_dataset_file, ...
     validation_dataset_file, target_type, keep_factor, filter_order, ...
-    filter_window, max_samples_per_training_run)
+    filter_window, max_samples_per_training_run, varargin)
 %PREPARE_ANFIS_TRAINING_DATA Build leakage-free ANFIS train/checking data.
 % Inputs are [vy r vx delta]. target_type is direct, dot, delta, or residual.
+
+parser = inputParser;
+addParameter(parser, 'TrainingRunIndices', [], @(x) ...
+    isnumeric(x) && isvector(x));
+addParameter(parser, 'ValidationRunIndices', [], @(x) ...
+    isnumeric(x) && isvector(x));
+parse(parser, varargin{:});
+training_run_indices = parser.Results.TrainingRunIndices;
+validation_run_indices = parser.Results.ValidationRunIndices;
 
 target_type = validatestring(target_type, ...
     {'direct','dot','delta','residual'}, mfilename, 'target_type');
@@ -25,6 +34,12 @@ end
 
 training_source = load(training_dataset_file, 'datasets', 'meta');
 validation_source = load(validation_dataset_file, 'datasets', 'meta');
+training_source_count = numel(training_source.datasets);
+validation_source_count = numel(validation_source.datasets);
+training_source.datasets = select_runs(training_source.datasets, ...
+    training_run_indices, 'TrainingRunIndices');
+validation_source.datasets = select_runs(validation_source.datasets, ...
+    validation_run_indices, 'ValidationRunIndices');
 Ts = training_source.meta.Ts;
 if abs(validation_source.meta.Ts-Ts) > ...
         eps(max(validation_source.meta.Ts,Ts))
@@ -64,11 +79,38 @@ prepared.training_run_id = training_run_id;
 prepared.validation_run_id = validation_run_id;
 prepared.training_run_count = numel(training_runs);
 prepared.validation_run_count = numel(validation_runs);
+prepared.training_source_indices = resolved_indices( ...
+    training_run_indices, training_source_count);
+prepared.validation_source_indices = resolved_indices( ...
+    validation_run_indices, validation_source_count);
 
 fprintf('Training:   %d points from %d independent runs.\n', ...
     size(X_train,1),prepared.training_run_count);
 fprintf('Validation: %d points from %d held-out runs.\n', ...
     size(X_val,1),prepared.validation_run_count);
+end
+
+function selected = select_runs(datasets, indices, argument_name)
+if isempty(indices)
+    selected = datasets;
+    return;
+end
+indices = indices(:)';
+validateattributes(indices, {'numeric'}, ...
+    {'integer','positive','<=',numel(datasets)}, ...
+    mfilename, argument_name);
+if numel(unique(indices)) ~= numel(indices)
+    error('%s contains duplicate run indices.', argument_name);
+end
+selected = datasets(indices);
+end
+
+function indices = resolved_indices(requested, count)
+if isempty(requested)
+    indices = 1:count;
+else
+    indices = requested(:)';
+end
 end
 
 function runs = build_run_samples(datasets,target_type,Ts,keep_factor, ...

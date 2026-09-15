@@ -24,7 +24,12 @@ Xin_n = (Xin - anfis_residuals.norm.mu(:)') ./ anfis_residuals.norm.sigma(:)';
 [~, ~, e_r]  = evalfis_mat(anfis_residuals.r.mat,  Xin_n);
 
 if isfield(anfis_residuals,'Ts'),training_dt=anfis_residuals.Ts;else,training_dt=0.02;end
-step_scale=dt/training_dt;
+if isfield(anfis_residuals,'residual_gain')
+    residual_gain = anfis_residuals.residual_gain;
+else
+    residual_gain = 1.0;
+end
+step_scale=residual_gain*dt/training_dt;
 
 x_next(2)=x_next(2)+step_scale*e_vy;
 x_next(4)=x_next(4)+step_scale*e_r;
